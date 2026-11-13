@@ -1,0 +1,393 @@
+{
+  "name": "dsh-vscode",
+  "displayName": "DSH",
+  "description": "DeepSeek Harness agent for VS Code: streaming chat, tool calls, workspace edits, approvals, sessions, models and permissions. An open-source alternative to the built-in agent.",
+  "version": "0.1.0",
+  "publisher": "wukuang-818",
+  "license": "MIT",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.106.0",
+    "node": ">=20"
+  },
+  "categories": [
+    "AI",
+    "Machine Learning",
+    "Other"
+  ],
+  "keywords": [
+    "deepseek",
+    "dsh",
+    "agent",
+    "chat",
+    "ai",
+    "copilot"
+  ],
+  "activationEvents": [
+    "onView:dsh.chatView",
+    "onWebviewPanel:dsh.chat",
+    "onChatParticipant:dsh"
+  ],
+  "main": "./dist/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "The DSH agent reads files, runs commands and edits the workspace through a local DeepSeek Harness runtime, so it needs a trusted workspace."
+    },
+    "virtualWorkspaces": false
+  },
+  "galleryBanner": {
+    "color": "#1E2028",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wukuang-818/dsh-vscode-ok"
+  },
+  "bugs": {
+    "url": "https://github.com/wukuang-818/dsh-vscode-ok/issues"
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node esbuild.mjs && node test/e2e/activation-smoke.cjs",
+    "package": "npm run build && npx @vscode/vsce package --no-dependencies --allow-missing-repository",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
+  },
+  "contributes": {
+    "chatParticipants": [
+      {
+        "id": "dsh",
+        "name": "dsh",
+        "fullName": "DeepSeek Harness",
+        "description": "Let the DeepSeek Harness agent work on your workspace from the built-in chat. Reads files, runs commands and edits the workspace.",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "new",
+            "description": "Start a new DSH session for this workspace."
+          },
+          {
+            "name": "sessions",
+            "description": "Switch to an existing DSH session."
+          },
+          {
+            "name": "model",
+            "description": "Pick the model for the active session."
+          },
+          {
+            "name": "permission",
+            "description": "Pick the permission preset (read-only, workspace-write, danger-full-access)."
+          },
+          {
+            "name": "agent",
+            "description": "Pick the agent preset for the active session."
+          },
+          {
+            "name": "compact",
+            "description": "Compact the conversation history of the active session."
+          },
+          {
+            "name": "status",
+            "description": "Show backend status, session and configuration."
+          }
+        ]
+      }
+    ],
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "dshSidebar",
+          "title": "DSH",
+          "icon": "media/dsh.svg",
+          "when": "dsh.supportsSecondarySidebar"
+        }
+      ],
+      "activitybar": [
+        {
+          "id": "dshSidebar",
+          "title": "DSH",
+          "icon": "media/dsh.svg",
+          "when": "!dsh.supportsSecondarySidebar"
+        }
+      ]
+    },
+    "views": {
+      "dshSidebar": [
+        {
+          "type": "webview",
+          "id": "dsh.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "dsh.chatView",
+        "contents": "The DSH chat needs to start the DeepSeek Harness runtime.\n[Start DSH](command:dsh.startBackend)"
+      }
+    ],
+    "commands": [
+      {
+        "command": "dsh.newChat",
+        "title": "New Chat",
+        "category": "DSH",
+        "icon": "$(add)"
+      },
+      {
+        "command": "dsh.focusChat",
+        "title": "Focus Chat",
+        "category": "DSH",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "dsh.startBackend",
+        "title": "Start Backend",
+        "category": "DSH",
+        "icon": "$(play)"
+      },
+      {
+        "command": "dsh.restartBackend",
+        "title": "Restart Backend",
+        "category": "DSH",
+        "icon": "$(debug-restart)"
+      },
+      {
+        "command": "dsh.stopBackend",
+        "title": "Stop Backend",
+        "category": "DSH",
+        "icon": "$(stop)"
+      },
+      {
+        "command": "dsh.showLogs",
+        "title": "Show Logs",
+        "category": "DSH",
+        "icon": "$(output)"
+      },
+      {
+        "command": "dsh.openSettings",
+        "title": "Open Settings",
+        "category": "DSH",
+        "icon": "$(gear)"
+      },
+      {
+        "command": "dsh.pickModel",
+        "title": "Select Model",
+        "category": "DSH"
+      },
+      {
+        "command": "dsh.pickPermission",
+        "title": "Select Permission Preset",
+        "category": "DSH"
+      },
+      {
+        "command": "dsh.pickAgent",
+        "title": "Select Agent Preset",
+        "category": "DSH"
+      },
+      {
+        "command": "dsh.sendSelection",
+        "title": "Send Selection to DSH",
+        "category": "DSH"
+      },
+      {
+        "command": "dsh.sendFile",
+        "title": "Send File to DSH",
+        "category": "DSH"
+      },
+      {
+        "command": "dsh.addFileToChat",
+        "title": "Add File to DSH Chat",
+        "category": "DSH"
+      },
+      {
+        "command": "dsh.copySessionId",
+        "title": "Copy Session ID",
+        "category": "DSH"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "dsh.sendSelection",
+          "when": "editorHasSelection",
+          "group": "dsh@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "dsh.sendFile",
+          "when": "resourceScheme == file",
+          "group": "dsh@1"
+        },
+        {
+          "command": "dsh.addFileToChat",
+          "when": "resourceScheme == file",
+          "group": "dsh@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "dsh.sendSelection",
+          "when": "editorHasSelection"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "dsh.newChat",
+          "when": "view == dsh.chatView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "dsh.pickModel",
+          "when": "view == dsh.chatView",
+          "group": "navigation@2"
+        },
+        {
+          "command": "dsh.restartBackend",
+          "when": "view == dsh.chatView",
+          "group": "navigation@3"
+        },
+        {
+          "command": "dsh.openSettings",
+          "when": "view == dsh.chatView",
+          "group": "navigation@4"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "dsh.focusChat",
+        "key": "ctrl+alt+d",
+        "mac": "cmd+alt+d"
+      }
+    ],
+    "configuration": {
+      "title": "DSH",
+      "properties": {
+        "dsh.executable": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path or command used to launch the DeepSeek Harness CLI. Leave empty to auto-detect: the desktop app's bundled `dsh.cmd`, an installed `dsh` on `PATH`, or `npx --yes @deepseek-ai/dsh`."
+        },
+        "dsh.executableArgs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Extra arguments passed before the `web` command. Leave empty to use the built-in defaults."
+        },
+        "dsh.port": {
+          "type": "number",
+          "default": 3080,
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Loopback port for the DSH web backend. A running instance on this port is reused when possible; 0 lets the OS choose a free port."
+        },
+        "dsh.host": {
+          "type": "string",
+          "default": "127.0.0.1",
+          "description": "Loopback host for the DSH web backend."
+        },
+        "dsh.reuseExisting": {
+          "type": "boolean",
+          "default": true,
+          "description": "Reuse an already running DSH backend on the configured port instead of spawning a new one."
+        },
+        "dsh.autoStart": {
+          "type": "boolean",
+          "default": true,
+          "description": "Start (or reuse) the backend automatically when the DSH chat view is opened."
+        },
+        "dsh.dshHome": {
+          "type": "string",
+          "default": "",
+          "description": "Override DSH_HOME for the spawned backend. Leave empty to inherit the current environment or use the desktop app's default."
+        },
+        "dsh.profile": {
+          "type": "string",
+          "default": "",
+          "description": "Named DSH profile to boot instead of the default web surface. Leave empty for the built-in web profile."
+        },
+        "dsh.model": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Default model for new sessions, as `<provider>:<model>` (for example `deepseek-official:deepseek-v4-flash`). Leave empty to use the DSH default."
+        },
+        "dsh.permissionPreset": {
+          "type": "string",
+          "enum": [
+            "read-only",
+            "workspace-write",
+            "danger-full-access"
+          ],
+          "default": "workspace-write",
+          "description": "Default permission preset for new sessions."
+        },
+        "dsh.agentPreset": {
+          "type": "string",
+          "default": "",
+          "description": "Default agent preset for new sessions. Leave empty to use the DSH default."
+        },
+        "dsh.effort": {
+          "type": "string",
+          "default": "",
+          "description": "Default reasoning effort for new sessions. Leave empty to use the model default."
+        },
+        "dsh.startTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "description": "How long to wait for the backend readiness line before failing."
+        },
+        "dsh.commandTimeoutMs": {
+          "type": "number",
+          "default": 600000,
+          "description": "Timeout for a single agent turn. The runtime keeps working after the UI stops waiting."
+        },
+        "dsh.confirmBeforeSend": {
+          "type": "boolean",
+          "default": true,
+          "description": "Ask for a prompt confirmation before sending editor context via the context menu commands."
+        },
+        "dsh.includeEditorContext": {
+          "type": "boolean",
+          "default": true,
+          "description": "Attach the active file and selection as context to chat participant requests."
+        },
+        "dsh.includeDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "Attach current workspace diagnostics (errors and warnings) as context when using the chat participant."
+        },
+        "dsh.debug": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log backend protocol traffic to the DSH output channel."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "dompurify": "^3.2.7",
+    "marked": "^15.0.12",
+    "preact": "^10.27.2",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.8",
+    "@types/vscode": "^1.106.0",
+    "@types/ws": "^8.18.1",
+    "@vscode/vsce": "^4.1.1",
+    "esbuild": "^0.28.2",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.6.3",
+    "vitest": "^3.2.6"
+  }
+}
