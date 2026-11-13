@@ -37,12 +37,14 @@ const webview = {
   platform: 'browser',
   format: 'iife',
   target: 'es2022',
+  jsx: 'automatic',
+  jsxImportSource: 'preact',
 };
 
 const contexts = await Promise.all([esbuild.context(host), esbuild.context(webview)]);
 if (watch) {
   await Promise.all(contexts.map((ctx) => ctx.watch()));
-  console.log('DSH extension: watching for changes...');
+  console.log('dsh-vscode-ok: watching for changes...');
 } else {
   await Promise.all(contexts.map((ctx) => ctx.rebuild()));
   await Promise.all(contexts.map((ctx) => ctx.dispose()));
