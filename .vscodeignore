@@ -14,3 +14,7 @@ tsconfig*.json
 !README.md
 !CHANGELOG.md
 !LICENSE
+
+*.log
+package-lock.json
+
