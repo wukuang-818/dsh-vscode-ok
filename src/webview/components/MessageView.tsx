@@ -192,7 +192,7 @@ export function MessageView(props: MessageViewProps): JSX.Element {
 
   const streaming = message.status === 'streaming';
   const copyable = partsText(message);
-  const roleLabel = message.role === 'system' ? 'System' : 'DSH';
+  const roleLabel = message.role === 'system' ? 'System' : 'dsh-vscode-ok';
 
   return (
     <article class={`msg msg-assistant${streaming ? ' is-streaming' : ''}`} data-status={message.status}>

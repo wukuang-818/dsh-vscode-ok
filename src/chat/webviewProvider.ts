@@ -99,7 +99,7 @@ const DEFAULT_HTML = `<!DOCTYPE html>
     <meta http-equiv="Content-Security-Policy"
       content="default-src 'none'; img-src {{cspSource}} data: https:; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}';" />
     <link rel="stylesheet" href="{{styleUri}}" />
-    <title>DSH</title>
+    <title>dsh-vscode-ok</title>
   </head>
   <body>
     <div id="root"></div>

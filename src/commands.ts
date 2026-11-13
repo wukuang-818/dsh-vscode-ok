@@ -31,7 +31,7 @@ async function prepareAndSend(
     await controller.sendPrompt(text, []);
     await controller.focus();
   } catch (error) {
-    void vscode.window.showErrorMessage(`DSH: ${errorMessage(error)}`);
+    void vscode.window.showErrorMessage(`dsh-vscode-ok: ${errorMessage(error)}`);
   }
 }
 
@@ -45,7 +45,7 @@ export function registerCommands(deps: CommandDeps): vscode.Disposable[] {
           await handler(...args);
         } catch (error) {
           log(`command ${id} failed:`, errorMessage(error));
-          void vscode.window.showErrorMessage(`DSH: ${errorMessage(error)}`);
+          void vscode.window.showErrorMessage(`dsh-vscode-ok: ${errorMessage(error)}`);
         }
       }),
     );
@@ -77,7 +77,7 @@ export function registerCommands(deps: CommandDeps): vscode.Disposable[] {
   });
 
   register('dsh.openSettings', async () => {
-    await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:wukuang-818.dsh-vscode');
+    await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:wukuang-818.dsh-vscode-ok');
   });
 
   register('dsh.pickModel', async () => {
@@ -95,13 +95,13 @@ export function registerCommands(deps: CommandDeps): vscode.Disposable[] {
   register('dsh.sendSelection', async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
-      void vscode.window.showWarningMessage('DSH: open a file and select some code first.');
+      void vscode.window.showWarningMessage('dsh-vscode-ok: open a file and select some code first.');
       return;
     }
     const root = controller.getState().workspace.cwd;
     const attachment = selectionAttachment(editor, root);
     if (!attachment) {
-      void vscode.window.showWarningMessage('DSH: no selection in the active editor.');
+      void vscode.window.showWarningMessage('dsh-vscode-ok: no selection in the active editor.');
       return;
     }
     await prepareAndSend(controller, [attachment], 'Explain this selection.');
@@ -110,13 +110,13 @@ export function registerCommands(deps: CommandDeps): vscode.Disposable[] {
   register('dsh.sendFile', async (uri?: unknown) => {
     const target = uri instanceof vscode.Uri ? uri : vscode.window.activeTextEditor?.document.uri;
     if (!target) {
-      void vscode.window.showWarningMessage('DSH: no file selected.');
+      void vscode.window.showWarningMessage('dsh-vscode-ok: no file selected.');
       return;
     }
     const root = controller.getState().workspace.cwd;
     const attachment = fileAttachment(target, root);
     if (!attachment) {
-      void vscode.window.showWarningMessage('DSH: only local files can be sent.');
+      void vscode.window.showWarningMessage('dsh-vscode-ok: only local files can be sent.');
       return;
     }
     await prepareAndSend(controller, [attachment], 'Review this file.');
@@ -134,7 +134,7 @@ export function registerCommands(deps: CommandDeps): vscode.Disposable[] {
     } else {
       const picked = await vscode.window.showOpenDialog({
         canSelectMany: true,
-        openLabel: 'Attach to DSH',
+        openLabel: 'Attach to dsh-vscode-ok',
         defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri,
       });
       attachments = (picked ?? [])
@@ -151,7 +151,7 @@ export function registerCommands(deps: CommandDeps): vscode.Disposable[] {
     const root = controller.getState().workspace.cwd;
     const attachment = diagnosticsAttachment(root);
     if (!attachment) {
-      void vscode.window.showInformationMessage('DSH: no diagnostics in the active file.');
+      void vscode.window.showInformationMessage('dsh-vscode-ok: no diagnostics in the active file.');
       return;
     }
     await prepareAndSend(controller, [attachment], 'Fix these problems.');
@@ -160,11 +160,11 @@ export function registerCommands(deps: CommandDeps): vscode.Disposable[] {
   register('dsh.copySessionId', async () => {
     const id = controller.getState().session.id;
     if (!id) {
-      void vscode.window.showInformationMessage('DSH: no active session yet.');
+      void vscode.window.showInformationMessage('dsh-vscode-ok: no active session yet.');
       return;
     }
     await vscode.env.clipboard.writeText(id);
-    void vscode.window.setStatusBarMessage('DSH session id copied', 2000);
+    void vscode.window.setStatusBarMessage('dsh-vscode-ok: session id copied', 2000);
   });
 
   register('dsh.openFileAt', async (path?: unknown, line?: unknown, endLine?: unknown) => {

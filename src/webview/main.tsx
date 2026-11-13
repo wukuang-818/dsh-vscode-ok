@@ -233,7 +233,7 @@ function App(): JSX.Element {
     body = (
       <div class="loading" role="status">
         <span class="working-dot" aria-hidden="true" />
-        <span>Loading DSH…</span>
+        <span>Loading dsh-vscode-ok…</span>
       </div>
     );
   } else if (chat.messages.length === 0) {

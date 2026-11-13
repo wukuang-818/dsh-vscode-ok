@@ -179,7 +179,7 @@ export class ChatController implements vscode.Disposable {
       return this.starting;
     }
     const starting = (async () => {
-      this.setBackend('starting', 'Launching DeepSeek Harness…');
+      this.setBackend('starting', 'Starting the agent runtime…');
       try {
         await this.backend.start();
       } catch (error) {
@@ -318,7 +318,7 @@ export class ChatController implements vscode.Disposable {
       }
     }
     if (models.length === 0) {
-      void vscode.window.showWarningMessage('DSH has not reported any models yet.');
+      void vscode.window.showWarningMessage('The backend has not reported any models yet.');
       return;
     }
     const picked = await vscode.window.showQuickPick(
@@ -328,7 +328,7 @@ export class ChatController implements vscode.Disposable {
         detail: model.id,
         id: model.id,
       })),
-      { title: 'DSH: select model', placeHolder: this.state.session.model?.label ?? 'Model' },
+      { title: 'Select model', placeHolder: this.state.session.model?.label ?? 'Model' },
     );
     if (!picked) {
       return;
@@ -336,7 +336,7 @@ export class ChatController implements vscode.Disposable {
     try {
       await this.backend.setModel(picked.id);
     } catch (error) {
-      void vscode.window.showErrorMessage(`DSH: failed to switch model: ${errorMessage(error)}`);
+      void vscode.window.showErrorMessage(`dsh-vscode-ok: failed to switch model: ${errorMessage(error)}`);
     }
   }
 
@@ -349,7 +349,7 @@ export class ChatController implements vscode.Disposable {
         description: preset.description,
         id: preset.id,
       })),
-      { title: 'DSH: permission mode', placeHolder: this.state.session.permission },
+      { title: 'Permission mode', placeHolder: this.state.session.permission },
     );
     if (!picked) {
       return;
@@ -381,7 +381,7 @@ export class ChatController implements vscode.Disposable {
       }
     }
     if (presets.length === 0) {
-      void vscode.window.showWarningMessage('DSH has not reported any agent presets yet.');
+      void vscode.window.showWarningMessage('The backend has not reported any agent presets yet.');
       return;
     }
     const picked = await vscode.window.showQuickPick(
@@ -391,7 +391,7 @@ export class ChatController implements vscode.Disposable {
         detail: preset.id,
         id: preset.id,
       })),
-      { title: 'DSH: agent preset' },
+      { title: 'Agent preset' },
     );
     if (!picked) {
       return;
@@ -399,7 +399,7 @@ export class ChatController implements vscode.Disposable {
     try {
       await this.backend.setAgentPreset(picked.id);
     } catch (error) {
-      void vscode.window.showErrorMessage(`DSH: failed to switch agent preset: ${errorMessage(error)}`);
+      void vscode.window.showErrorMessage(`dsh-vscode-ok: failed to switch agent preset: ${errorMessage(error)}`);
     }
   }
 
@@ -437,7 +437,7 @@ export class ChatController implements vscode.Disposable {
         break;
       }
       case 'backend-exit': {
-        this.setBackend('error', event.error ?? `DSH runtime exited (code ${event.code ?? '?'})`);
+        this.setBackend('error', event.error ?? `The agent runtime exited (code ${event.code ?? '?'})`);
         this.state.session.running = false;
         this.post({ type: 'session', session: this.state.session });
         break;
@@ -553,7 +553,7 @@ export class ChatController implements vscode.Disposable {
     }
     const items = request.options.map((option) => option.label);
     const picked = await vscode.window.showWarningMessage(
-      `DSH: ${request.title}${request.detail ? `\n\n${request.detail}` : ''}`,
+      `Approval needed: ${request.title}${request.detail ? `\n\n${request.detail}` : ''}`,
       { modal: true },
       ...items,
     );

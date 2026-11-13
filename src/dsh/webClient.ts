@@ -15,6 +15,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
+import { createServer, connect } from 'node:net';
 import WebSocket from 'ws';
 
 import { log } from '../log';
@@ -31,6 +32,35 @@ const WS_OPEN_TIMEOUT_MS = 15_000;
 const HEARTBEAT_INTERVAL_MS = 5_000;
 const HEARTBEAT_DEAD_MS = 20_000;
 const MAX_RECONNECT_ATTEMPTS = 20;
+
+/** True when something already accepts TCP connections on host:port. */
+function portInUse(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect({ host, port });
+    const settle = (value: boolean): void => {
+      socket.removeAllListeners();
+      socket.destroy();
+      resolve(value);
+    };
+    socket.once('connect', () => settle(true));
+    socket.once('error', () => settle(false));
+    socket.setTimeout(1_000, () => settle(false));
+  });
+}
+
+/** Ask the OS for a free loopback port. */
+function findFreePort(host: string): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once('error', reject);
+    server.listen(0, host, () => {
+      const address = server.address();
+      const port = typeof address === 'object' && address ? address.port : 0;
+      server.close(() => (port ? resolve(port) : reject(new Error('no free port'))));
+    });
+  });
+}
 
 /** Structured transport failure with a machine readable `code`. */
 export class DshWebError extends Error {
@@ -125,6 +155,7 @@ function sleep(ms: number): Promise<void> {
 export class WebClient {
   private readonly options: WebClientOptions;
 
+  private port = 0;
   private baseUrl = '';
   private token = '';
   private cookie = '';
@@ -178,14 +209,23 @@ export class WebClient {
   async start(): Promise<void> {
     if (this.started) return;
 
-    if (this.options.reuseExisting && (await this.probeExisting())) {
-      // A running server answers but it was not launched with a token we hold,
-      // and the token is never exposed through the environment.
-      throw new DshWebError(
-        'reuse/no-token',
-        `A DeepSeek Harness web server is already listening at ${this.options.host}:${this.options.port}, ` +
-          'but it was not started by this window so its launch token is unavailable. ' +
-          'Stop that server or disable "dsh.reuseExisting" to let the extension start its own.',
+    this.port = this.options.port;
+    if (await portInUse(this.options.host, this.port)) {
+      if (!this.options.reuseExisting) {
+        throw new DshWebError(
+          'start/port-in-use',
+          `Port ${this.options.host}:${this.options.port} is already in use. ` +
+            'Set "dsh.port" to a free port, or enable "dsh.reuseExisting" to let the extension pick one.',
+        );
+      }
+      // An existing server cannot be adopted: its launch token is never exposed.
+      this.port = await findFreePort(this.options.host);
+      log(
+        'webClient: port',
+        this.options.port,
+        'is busy, starting the runtime on',
+        this.port,
+        'instead',
       );
     }
 
@@ -300,22 +340,6 @@ export class WebClient {
 
   // -- startup ------------------------------------------------------------
 
-  private async probeExisting(): Promise<boolean> {
-    const base = `http://${this.options.host}:${this.options.port}`;
-    const timeout = Math.min(5_000, Math.max(1_000, this.options.startTimeoutMs));
-    try {
-      const response = await fetch(`${base}/manifest.webmanifest`, {
-        signal: AbortSignal.timeout(timeout),
-      });
-      if (!response.ok) return false;
-      const body = await response.text();
-      log('webClient: found existing dsh web server at', base, 'manifest bytes', body.length);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
   private async spawn(): Promise<void> {
     const command = await resolveDshCommand({
       configuredExecutable: this.options.executable ?? '',
@@ -329,7 +353,7 @@ export class WebClient {
       '--profile',
       this.options.profile || 'web',
       '--port',
-      String(this.options.port),
+      String(this.port),
       '--no-open',
     ];
     log(
@@ -667,7 +691,7 @@ export class WebClient {
     this.reconnecting = false;
     if (!this.stopping) {
       this.options.onExit?.({
-        error: `Could not reconnect to the DeepSeek Harness web server after ${MAX_RECONNECT_ATTEMPTS} attempts.`,
+        error: `Could not reconnect to the agent runtime after ${MAX_RECONNECT_ATTEMPTS} attempts.`,
       });
     }
   }
@@ -680,7 +704,7 @@ export class WebClient {
     options: RpcOptions,
   ): Promise<Response> {
     if (!this.baseUrl || !this.cookie) {
-      throw new DshWebError('rpc/not-ready', 'The DeepSeek Harness web transport is not connected.');
+      throw new DshWebError('rpc/not-ready', 'The agent runtime is not connected.');
     }
     const url = `${this.baseUrl}/api/${endpoint}`;
     const timeoutMs = options.timeoutMs ?? this.getCommandTimeoutMs();

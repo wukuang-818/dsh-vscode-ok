@@ -34,14 +34,14 @@ export interface ComposerProps {
 function placeholderFor(status: BackendStatus): string {
   switch (status) {
     case 'starting':
-      return 'Starting DSH backend…';
+      return 'Starting backend…';
     case 'stopped':
-      return 'Start the DSH backend to chat';
+      return 'Start the backend to chat';
     case 'error':
-      return 'DSH backend failed to start';
+      return 'Backend failed to start';
     case 'ready':
     default:
-      return 'Ask DSH… (Enter to send, Shift+Enter for a newline)';
+      return 'Ask the agent… (Enter to send, Shift+Enter for a newline)';
   }
 }
 
@@ -110,7 +110,7 @@ export function Composer({
           value={draft.text}
           placeholder={placeholderFor(backendStatus)}
           disabled={!ready}
-          aria-label="Message DSH"
+          aria-label="Message the agent"
           onInput={(event) => onTextChange(event.currentTarget.value)}
           onKeyDown={handleKeyDown}
         />

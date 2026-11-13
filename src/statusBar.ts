@@ -8,7 +8,7 @@ export class StatusBar implements vscode.Disposable {
 
   constructor(private readonly controller: ChatController) {
     this.item = vscode.window.createStatusBarItem('dsh.status', vscode.StatusBarAlignment.Right, 90);
-    this.item.name = 'DSH';
+    this.item.name = 'dsh-vscode-ok';
     this.item.command = 'dsh.focusChat';
     this.subscription = controller.onAgentEvent((event) => this.onEvent(event));
     this.update(controller.getState());
@@ -23,18 +23,18 @@ export class StatusBar implements vscode.Disposable {
   update(state: ChatState): void {
     const backend = state.backend;
     if (backend.status === 'ready') {
-      this.item.text = state.session.running ? '$(loading~spin) DSH' : '$(sparkle) DSH';
+      this.item.text = state.session.running ? '$(loading~spin) dsh-vscode-ok' : '$(sparkle) dsh-vscode-ok';
       this.item.backgroundColor = undefined;
       this.item.color = undefined;
     } else if (backend.status === 'starting') {
-      this.item.text = '$(loading~spin) DSH';
+      this.item.text = '$(loading~spin) dsh-vscode-ok';
       this.item.backgroundColor = undefined;
     } else if (backend.status === 'error') {
-      this.item.text = '$(warning) DSH';
+      this.item.text = '$(warning) dsh-vscode-ok';
       this.item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
       this.item.color = undefined;
     } else {
-      this.item.text = '$(debug-disconnect) DSH';
+      this.item.text = '$(debug-disconnect) dsh-vscode-ok';
       this.item.backgroundColor = undefined;
     }
     const lines = [

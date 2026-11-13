@@ -68,7 +68,7 @@ export function Header({
   return (
     <header class="header">
       <div class="header-row">
-        <span class="brand">DSH</span>
+        <span class="brand">dsh-vscode-ok</span>
         {workspace !== '' && (
           <span class="workspace" title={chat?.workspace.cwd ?? workspace}>
             {workspace}
@@ -96,7 +96,7 @@ export function Header({
           <button
             type="button"
             class="icon-btn"
-            title={status === 'error' ? 'Restart the DSH backend' : 'Start the DSH backend'}
+            title={status === 'error' ? 'Restart the backend' : 'Start the backend'}
             aria-label={status === 'error' ? 'Restart backend' : 'Start backend'}
             onClick={onStartBackend}
           >

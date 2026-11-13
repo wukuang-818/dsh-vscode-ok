@@ -192,7 +192,7 @@ export async function resolveDshCommand(options: ResolveOptions): Promise<Resolv
   }
 
   throw new Error(
-    'Cannot find the dsh command. Install DeepSeek Harness, add dsh to PATH, or set "dsh.executable".',
+    'Cannot find the dsh command. Install the DSH runtime or the desktop app, add dsh to PATH, or set "dsh.executable".',
   );
 }
 

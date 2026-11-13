@@ -11,5 +11,7 @@ First release.
 - File diffs from tool results open in the diff editor; patch-only results render as a diff document.
 - Editor context attachments: selection, active file, workspace diagnostics and terminal output.
 - `@dsh` chat participant with `/new`, `/status`, `/model`, `/permission`, `/agent`, `/sessions` and `/compact`.
-- Runtime discovery across `dsh` on `PATH`, the desktop install, the npm global shim and `npx`, plus token/cookie handling for reusing a running `dsh web` server.
-- Status bar entry and `DSH` output channel.
+- Runtime discovery across `dsh` on `PATH`, a desktop install, the npm global shim and `npx`.
+- Token/cookie handling for the spawned `dsh web` server, with free-port fallback when the configured port is occupied.
+- Status bar entry and `dsh-vscode-ok` output channel.
+- Project, package and display name are `dsh-vscode-ok`; the extension is independent and not affiliated with DeepSeek.

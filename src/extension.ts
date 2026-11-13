@@ -19,7 +19,7 @@ let controller: ChatController | undefined;
 export function activate(context: vscode.ExtensionContext): void {
   initLog();
   const version = (context.extension.packageJSON as { version?: string }).version ?? '0.0.0';
-  log(`activating DSH ${version} on VS Code ${vscode.version}`);
+  log(`activating dsh-vscode-ok ${version} on VS Code ${vscode.version}`);
 
   void vscode.commands.executeCommand(
     'setContext',
@@ -58,7 +58,7 @@ export function activate(context: vscode.ExtensionContext): void {
     diffStore,
     new StatusBar(chat),
     new vscode.Disposable(() => {
-      log('deactivating DSH extension');
+      log('deactivating dsh-vscode-ok extension');
       void chat.stop();
       chat.dispose();
       disposeLog();
@@ -68,7 +68,7 @@ export function activate(context: vscode.ExtensionContext): void {
   if (readBooleanSetting('autoStart', true)) {
     void chat.ensureStarted().catch((error: unknown) => {
       log('auto start failed:', errorMessage(error));
-      void vscode.window.showErrorMessage(`DSH: ${errorMessage(error)}`);
+      void vscode.window.showErrorMessage(`dsh-vscode-ok: ${errorMessage(error)}`);
     });
   }
 }

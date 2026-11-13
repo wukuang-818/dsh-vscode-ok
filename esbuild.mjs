@@ -47,5 +47,5 @@ if (watch) {
   await Promise.all(contexts.map((ctx) => ctx.rebuild()));
   await Promise.all(contexts.map((ctx) => ctx.dispose()));
   copyFileSync('media/chat.html', 'dist/webview/chat.html');
-  console.log('DSH extension: build complete.');
+  console.log('dsh-vscode-ok: build complete.');
 }

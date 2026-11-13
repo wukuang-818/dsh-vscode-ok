@@ -61,7 +61,7 @@ export function registerChatParticipant(controller: ChatController): vscode.Disp
 
     if (command === 'new') {
       await controller.newSession();
-      response.markdown('Started a new DSH session.');
+      response.markdown('Started a new session.');
       return { metadata: { command: 'new' } };
     }
     if (command === 'status') {
@@ -84,7 +84,7 @@ export function registerChatParticipant(controller: ChatController): vscode.Disp
       await controller.requestSessions();
       const sessions = controller.getState().sessions;
       if (sessions.length === 0) {
-        response.markdown('No saved DSH sessions yet.');
+        response.markdown('No saved sessions yet.');
         return { metadata: { command: 'sessions' } };
       }
       response.markdown(
@@ -97,14 +97,14 @@ export function registerChatParticipant(controller: ChatController): vscode.Disp
     }
     if (command === 'compact') {
       response.markdown(
-        'Context compaction is handled by the DSH runtime. Use the DSH sidebar for full session controls.',
+        'Context compaction is handled by the agent runtime. Use the dsh-vscode-ok sidebar for full session controls.',
       );
       return { metadata: { command: 'compact' } };
     }
 
     const text = request.prompt.trim();
     if (!text) {
-      response.markdown('Ask DSH something, or pass a file reference with `@path`.');
+      response.markdown('Ask the agent something, or pass a file reference with `@path`.');
       return {};
     }
 
@@ -157,7 +157,7 @@ export function registerChatParticipant(controller: ChatController): vscode.Disp
       }
       if (event.type === 'approval' && event.request) {
         warn(
-          `DSH needs approval for ${event.request.toolName}: ${event.request.title}. Answer in the DSH sidebar.`,
+          `Approval needed for ${event.request.toolName}: ${event.request.title}. Answer in the dsh-vscode-ok sidebar.`,
         );
         void controller.focus();
         return;
@@ -172,14 +172,14 @@ export function registerChatParticipant(controller: ChatController): vscode.Disp
       }
       if (event.type === 'message-status' && assistantId && event.messageId === assistantId) {
         if (event.status === 'error') {
-          warn(event.error ?? 'The DSH run failed.');
+          warn(event.error ?? 'The run failed.');
         }
         if (event.status !== 'streaming') {
           settle();
         }
       }
       if (event.type === 'backend-exit') {
-        warn(event.error ?? 'The DSH runtime exited.');
+        warn(event.error ?? 'The agent runtime exited.');
         settle();
       }
     });
@@ -212,12 +212,12 @@ export function registerChatParticipant(controller: ChatController): vscode.Disp
       return [
         {
           prompt: '@dsh /status',
-          label: 'Show DSH status',
+          label: 'Show status',
           command: 'status',
         },
         {
           prompt: '@dsh /new',
-          label: 'Start a new DSH session',
+          label: 'Start a new session',
           command: 'new',
         },
       ];

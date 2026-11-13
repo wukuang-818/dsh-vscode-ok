@@ -353,12 +353,19 @@ function freePort() {
 }
 
 (async () => {
+  const net = require('node:net');
   const port = await freePort();
+  // Occupy the configured port so the extension has to fall back to a free one.
+  const blocker = net.createServer();
+  await new Promise((resolve, reject) => {
+    blocker.once('error', reject);
+    blocker.listen(port, '127.0.0.1', resolve);
+  });
   configOverrides.set('dsh.port', port);
-  configOverrides.set('dsh.reuseExisting', false);
+  configOverrides.set('dsh.reuseExisting', true);
   configOverrides.set('dsh.autoStart', true);
   configOverrides.set('dsh.debug', true);
-  log(`using port ${port}`);
+  log(`configured port ${port} is occupied on purpose`);
 
   const extension = require(path.join(repo, 'dist', 'extension.js'));
   const storageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-e2e-'));
@@ -431,12 +438,19 @@ function freePort() {
   const init = posted.find((m) => m.type === 'init');
   log(`init: workspace=${init.state && init.state.workspace && init.state.workspace.name}, backend=${JSON.stringify(init.state && init.state.backend)}`);
 
-  await waitFor(
-    () => posted.some((m) => m.type === 'backend' && m.status === 'ready'),
+  const readyMessage = await waitFor(
+    () => posted.find((m) => m.type === 'backend' && m.status === 'ready'),
     180000,
     'backend ready',
   );
-  log('backend reported ready');
+  const readyUrl = String(readyMessage.detail || '');
+  const readyPort = Number((/\:(\d+)/.exec(readyUrl) || [])[1] || 0);
+  log(`backend reported ready at ${readyUrl}`);
+  if (!readyPort) throw new Error('backend ready message did not include a URL');
+  if (readyPort === port) throw new Error('extension did not fall back to a free port');
+  if (!outputLines.join('').includes(`starting the runtime on ${readyPort}`)) {
+    log('WARNING: no port-fallback log line in the output channel');
+  }
 
   webviewReceiver.fire({ type: 'send', text: 'Reply with exactly the word pong and nothing else.', attachments: [] });
 
@@ -467,16 +481,18 @@ function freePort() {
 
   // Give the backend a moment to reap its child process tree.
   await new Promise((resolve) => setTimeout(resolve, 6000));
+  await new Promise((resolve) => blocker.close(resolve));
 
   const leftovers = require('node:child_process')
     .execFileSync('powershell.exe', [
       '-NoProfile',
       '-Command',
-      `Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'DeepSeek Harness.exe' -and $_.CommandLine -match '--profile web --port ${port}' } | Select-Object -ExpandProperty ProcessId`,
+      `Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'DeepSeek Harness.exe' -and $_.CommandLine -match '--profile web --port ${readyPort}' } | Select-Object -ExpandProperty ProcessId`,
     ])
     .toString()
     .trim();
   log(`leftover backend processes: ${leftovers || '(none)'}`);
+  if (leftovers) throw new Error('the spawned runtime was not stopped with the extension');
 
   fs.writeFileSync(path.join(os.tmpdir(), 'dsh-vscode-e2e-activation.log'), lines.join('\n'));
   log('RESULT: PASS');

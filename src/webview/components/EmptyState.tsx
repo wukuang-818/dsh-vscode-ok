@@ -33,25 +33,25 @@ export function EmptyState({
       <div class="empty-mark" aria-hidden="true">
         <SparkleIcon size={22} />
       </div>
-      <h1 class="empty-title">DeepSeek Harness</h1>
+      <h1 class="empty-title">dsh-vscode-ok</h1>
       <p class="empty-intro">
         An agent for your workspace: read and edit files, run commands, and explain what it changed.
       </p>
       {backendStatus === 'stopped' && (
         <button type="button" class="btn btn-primary empty-start" onClick={onStart}>
-          Start DSH
+          Start dsh-vscode-ok
         </button>
       )}
       {backendStatus === 'error' && (
         <div class="empty-failure">
-          <p class="empty-error">{backendDetail !== undefined && backendDetail !== '' ? backendDetail : 'The DSH backend failed to start.'}</p>
+          <p class="empty-error">{backendDetail !== undefined && backendDetail !== '' ? backendDetail : 'The backend failed to start.'}</p>
           <button type="button" class="btn btn-secondary empty-start" onClick={onRestart}>
             <RefreshIcon size={12} />
-            <span>Restart DSH</span>
+            <span>Restart dsh-vscode-ok</span>
           </button>
         </div>
       )}
-      {backendStatus === 'starting' && <p class="empty-status">Starting DSH backend…</p>}
+      {backendStatus === 'starting' && <p class="empty-status">Starting backend…</p>}
       <p class="empty-hint">
         Focus this view anytime with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd>
       </p>

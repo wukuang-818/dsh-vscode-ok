@@ -110,7 +110,7 @@ export class WebBackend implements Backend {
       onReconnect: () => {
         this.ready = true;
         this.ctx.attempt = undefined;
-        this.notice('info', 'Reconnected to the DeepSeek Harness server.');
+        this.notice('info', 'Reconnected to the agent runtime.');
       },
     });
     this.client = client;
@@ -124,7 +124,7 @@ export class WebBackend implements Backend {
       void this.loadInitialState();
     } catch (error) {
       this.ready = false;
-      this.notice('error', `Could not start the DeepSeek Harness web runtime: ${errorText(error)}`);
+      this.notice('error', `Could not start the agent runtime: ${errorText(error)}`);
       this.emit([{ type: 'backend-exit', error: errorText(error) }]);
       throw error;
     }
@@ -385,7 +385,7 @@ export class WebBackend implements Backend {
 
   private requireClient(): WebClient {
     if (!this.client) {
-      throw new DshWebError('not-started', 'The DeepSeek Harness web transport is not started.');
+      throw new DshWebError('not-started', 'The agent runtime is not started.');
     }
     return this.client;
   }
@@ -419,7 +419,7 @@ export class WebBackend implements Backend {
     this.eventStream?.close();
     this.eventStream = client.openStream('$events', {}, {
       onItem: (value) => this.handleItem(value),
-      onEnd: () => this.notice('warning', 'The DeepSeek Harness event stream ended.'),
+      onEnd: () => this.notice('warning', 'The agent event stream ended.'),
       onError: (error) => this.notice('error', `Event stream error: ${errorText(error)}`),
     });
   }

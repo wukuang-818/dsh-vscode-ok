@@ -40,7 +40,7 @@ export class ToolDiffStore implements vscode.Disposable {
     const tool = this.diffs.get(toolId);
     const diff = tool?.diff;
     if (!tool || !diff) {
-      void vscode.window.showInformationMessage('DSH: this tool call did not record a file diff.');
+      void vscode.window.showInformationMessage('dsh-vscode-ok: this tool call did not record a file diff.');
       return;
     }
     if (diff.oldText !== undefined && diff.newText !== undefined) {
@@ -58,7 +58,7 @@ export class ToolDiffStore implements vscode.Disposable {
             'vscode.diff',
             vscode.Uri.file(before),
             vscode.Uri.file(after),
-            `DSH: ${pathLabel} (before ↔ after)`,
+            `dsh-vscode-ok: ${pathLabel} (before ↔ after)`,
           );
           return;
         } catch {
@@ -87,6 +87,6 @@ export async function openFileAt(path: string, line?: number, endLine?: number):
       editor.revealRange(range, vscode.TextEditorRevealType.InCenterIfOutsideViewport);
     }
   } catch (error) {
-    void vscode.window.showErrorMessage(`DSH: cannot open ${path}: ${(error as Error).message}`);
+    void vscode.window.showErrorMessage(`dsh-vscode-ok: cannot open ${path}: ${(error as Error).message}`);
   }
 }

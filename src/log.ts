@@ -4,7 +4,7 @@ let channel: vscode.OutputChannel | undefined;
 
 export function initLog(): vscode.OutputChannel {
   if (!channel) {
-    channel = vscode.window.createOutputChannel('DSH');
+    channel = vscode.window.createOutputChannel('dsh-vscode-ok');
   }
   return channel;
 }
