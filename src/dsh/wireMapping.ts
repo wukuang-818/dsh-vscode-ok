@@ -14,12 +14,15 @@ import type {
   Attachment,
   ChatMessage,
   ChatPart,
+  CommandInfo,
   FileDiffSummary,
   ModelInfo,
   PermissionPreset,
   SessionInfo,
+  SessionSearchHit,
   SessionSummary,
   SessionUsage,
+  SkillInfo,
   ToolCall,
   ToolStatus,
 } from '../shared/protocol';
@@ -1012,7 +1015,9 @@ function mapServerNotification(item: Record<string, unknown>, ctx: WireContext):
 function attachmentNote(attachment: Attachment): string {
   switch (attachment.kind) {
     case 'image':
-      return `[image: ${attachment.label}] (image data is not forwarded by this transport)`;
+      return attachment.data
+        ? `[image: ${attachment.label}] (attached as an image content block)`
+        : `[image: ${attachment.label}] (image data is not forwarded by this transport)`;
     case 'file':
     case 'selection': {
       const range =
@@ -1036,6 +1041,54 @@ export function buildPromptText(input: SendInput): string {
     }
   }
   return blocks.filter((block) => block.length > 0).join('\n\n');
+}
+
+/** Media types `session/prompt` accepts for an inline image block. */
+export type PromptImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+
+export type PromptContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; mediaType: PromptImageMediaType; data: string; name?: string };
+
+const PROMPT_IMAGE_MEDIA_TYPES: ReadonlySet<string> = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/webp',
+  'image/gif',
+]);
+
+function isInlineImage(
+  attachment: Attachment,
+): attachment is Attachment & { data: string; mediaType: PromptImageMediaType } {
+  return (
+    attachment.kind === 'image' &&
+    typeof attachment.data === 'string' &&
+    attachment.data.length > 0 &&
+    typeof attachment.mediaType === 'string' &&
+    PROMPT_IMAGE_MEDIA_TYPES.has(attachment.mediaType)
+  );
+}
+
+/**
+ * Build the `session/prompt` content array: one text block carrying the prompt
+ * and every text attachment, followed by one image block per pasted image.
+ */
+export function buildPromptContent(input: SendInput): PromptContentBlock[] {
+  const blocks: PromptContentBlock[] = [];
+  const text = buildPromptText(input);
+  if (text.length > 0) {
+    blocks.push({ type: 'text', text });
+  }
+  for (const attachment of input.attachments) {
+    if (!isInlineImage(attachment)) continue;
+    blocks.push({
+      type: 'image',
+      mediaType: attachment.mediaType,
+      data: attachment.data,
+      ...(attachment.label ? { name: attachment.label } : {}),
+    });
+  }
+  return blocks;
 }
 
 /** Parse `<provider>:<model>` model ids. */
@@ -1119,4 +1172,60 @@ export function mapSessionList(value: unknown): SessionSummary[] {
     });
   }
   return sessions;
+}
+
+/**
+ * Map `commands/list` to {@link CommandInfo} values. The runtime returns a bare
+ * array of definitions; `input.hint` becomes `inputHint`.
+ */
+export function mapCommandList(value: unknown): CommandInfo[] {
+  const items = Array.isArray(value)
+    ? value
+    : isRecord(value) && Array.isArray(value.commands)
+      ? value.commands
+      : [];
+  const commands: CommandInfo[] = [];
+  for (const entry of items) {
+    if (!isRecord(entry)) continue;
+    const name = asString(entry.name);
+    if (!name) continue;
+    const input = isRecord(entry.input) ? entry.input : undefined;
+    commands.push({
+      name,
+      ...(asString(entry.description) ? { description: asString(entry.description) as string } : {}),
+      ...(asString(input?.hint) ? { inputHint: asString(input?.hint) as string } : {}),
+      ...(asString(entry.definitionId) ? { definitionId: asString(entry.definitionId) as string } : {}),
+    });
+  }
+  return commands;
+}
+
+/** Map `skills/list` to {@link SkillInfo} values (name falls back to `id`). */
+export function mapSkillList(value: unknown): SkillInfo[] {
+  const items = isRecord(value) && Array.isArray(value.skills) ? value.skills : [];
+  const skills: SkillInfo[] = [];
+  for (const entry of items) {
+    if (!isRecord(entry)) continue;
+    const name = asString(entry.name) ?? asString(entry.id);
+    if (!name) continue;
+    skills.push({
+      name,
+      ...(asString(entry.description) ? { description: asString(entry.description) as string } : {}),
+      ...(asString(entry.path) ? { path: asString(entry.path) as string } : {}),
+    });
+  }
+  return skills;
+}
+
+/** Map `session/search` hits to {@link SessionSearchHit} values. */
+export function mapSessionSearchResult(value: unknown): SessionSearchHit[] {
+  const items = isRecord(value) && Array.isArray(value.items) ? value.items : [];
+  const hits: SessionSearchHit[] = [];
+  for (const entry of items) {
+    if (!isRecord(entry)) continue;
+    const sessionId = asString(entry.sessionId);
+    if (!sessionId) continue;
+    hits.push({ sessionId, snippet: asString(entry.snippet) ?? '' });
+  }
+  return hits;
 }

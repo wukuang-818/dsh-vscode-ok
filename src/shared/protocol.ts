@@ -47,6 +47,27 @@ export interface SessionSummary {
   running?: boolean;
 }
 
+/** A slash command advertised by the runtime for the active agent. */
+export interface CommandInfo {
+  name: string;
+  description?: string;
+  inputHint?: string;
+  definitionId?: string;
+}
+
+/** A user-invocable skill visible to the active session composition. */
+export interface SkillInfo {
+  name: string;
+  description?: string;
+  path?: string;
+}
+
+/** One hit from a runtime session search. */
+export interface SessionSearchHit {
+  sessionId: string;
+  snippet: string;
+}
+
 export interface SessionUsage {
   inputTokens?: number;
   outputTokens?: number;
@@ -140,6 +161,10 @@ export interface Attachment {
   endLine?: number;
   /** Pre-rendered text injected into the prompt. */
   text?: string;
+  /** Base64 image bytes for pasted images (no data: prefix). */
+  data?: string;
+  /** Media type of a pasted image. */
+  mediaType?: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
 }
 
 export interface ChatMessage {
@@ -167,6 +192,12 @@ export interface ChatState {
   sessions: SessionSummary[];
   models: ModelInfo[];
   agentPresets: AgentPresetInfo[];
+  /** Workspace files offered for @-mention completion (host-cached, capped). */
+  files: string[];
+  /** Slash commands advertised by the runtime for the active agent. */
+  commands: CommandInfo[];
+  /** Skills available to the active session composition. */
+  skills: SkillInfo[];
   config: {
     includeDiagnostics: boolean;
     confirmBeforeSend: boolean;
@@ -195,6 +226,10 @@ export type HostMessage =
   | { type: 'sessions'; sessions: SessionSummary[] }
   | { type: 'models'; models: ModelInfo[] }
   | { type: 'agent-presets'; presets: AgentPresetInfo[] }
+  | { type: 'files'; files: string[] }
+  | { type: 'commands'; commands: CommandInfo[] }
+  | { type: 'skills'; skills: SkillInfo[] }
+  | { type: 'search-results'; items: SessionSearchHit[] }
   | { type: 'clear' }
   | { type: 'message'; message: ChatMessage }
   | { type: 'part'; messageId: string; index: number; part: ChatPart }
@@ -233,7 +268,13 @@ export type WebviewMessage =
   | { type: 'start-backend' }
   | { type: 'show-logs' }
   | { type: 'open-settings' }
-  | { type: 'copy-session-id' };
+  | { type: 'copy-session-id' }
+  | { type: 'request-files'; query: string }
+  | { type: 'pick-effort' }
+  | { type: 'rename-session'; sessionId: string; title: string }
+  | { type: 'fork-session'; sessionId: string }
+  | { type: 'search-sessions'; query: string }
+  | { type: 'execute-command'; name: string; line: string };
 
 /* ------------------------------------------------------------------ */
 /* Backend-independent agent events (produced by a transport adapter)  */

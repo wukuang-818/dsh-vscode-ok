@@ -8,21 +8,40 @@
 
 扩展不重新实现代理，而是启动本地 `dsh web` 运行时，通过观察得到的 HTTP 与 WebSocket 协议与它通信：token 交换、`/api/*` 上的 JSON-RPC、以及 `/api/remote.mux` 多路复用流。界面里的一切都来自真实运行时，使用你自己的 `~/.dsh` 配置、模型与凭据。
 
-![dsh-vscode-ok 聊天侧边栏，含流式回答、工具调用与审批对话框](media/screenshot-chat.png)
+![dsh-vscode-ok 聊天侧边栏，含流式回答、计划面板、用量栏与行内审批卡片](media/screenshot-chat.png)
+
+| 斜杠命令与操作 | 会话搜索、重命名与分叉 | 宽屏布局 |
+| --- | --- | --- |
+| ![输入框里的斜杠命令菜单](media/screenshot-commands.png) | ![带运行时搜索结果的会话选择器](media/screenshot-sessions.png) | ![宽屏布局](media/screenshot-wide.png) |
 
 ## 功能
 
 - 侧边栏聊天面板，放在次级侧边栏；旧版 VS Code 自动回退到活动栏。界面用 Preact 编写，配色全部取自 VS Code 主题变量。
-- 流式输出助手文本、推理、工具调用、待办列表与提示信息，映射自运行时的会话事件流。
-- 审批：需要授权的工具调用会弹出审批卡片，选项由运行时给出，回答通过 `/api/$events/result` 回传。
-- 会话：新建、列出、切换；标题、模型、token 用量与上下文压力取自会话投影。
-- 模型与 agent 预设从运行时目录读取（`session/modelCatalog`、`agentPresets/list`）。
-- 权限预设（`read-only`、`workspace-write`、`danger-full-access`）与推理强度可选。
+- 流式输出助手文本、可折叠的推理过程、工具调用、计划更新与提示信息，映射自运行时的会话事件流。
+- Copilot 风格对话流：会话标题栏与更多操作、右对齐的用户气泡、助手角色行、带语言标签与复制按钮的代码块、表格、行内差异，以及可展开输入、输出、差异与子会话的紧凑工具行。
+- 审批：需要授权的工具调用在对话末尾显示审批卡片（允许一次、始终允许该工具、跳过），回答通过 `/api/$events/result` 回传。
+- 计划与用量：运行时的 `todo` 更新渲染为带进度的计划面板，token 与上下文用量显示在输入框下方。
+- 会话：新建、列出、切换，支持本地过滤加运行时 `session/search` 搜索、重命名与分叉。
+- 模型、agent 预设与推理强度从运行时目录读取（`session/modelCatalog`、`agentPresets/list`）。
+- 权限预设（`read-only`、`workspace-write`、`danger-full-access`）可选。
 - 工作区修改：工具结果里的文件差异直接在差异编辑器中打开，只有 patch 文本时回退为差异文档。
-- 编辑器上下文：可以把选区、当前文件、工作区诊断或终端输出作为附件发给代理。
+- 编辑器上下文：可以把选区、当前文件、工作区诊断或终端输出作为附件发给代理；也可以把图片粘贴或拖进输入框。
+- 斜杠命令：本地操作（`/new`、`/stop`、`/model`、`/permission`、`/agent`、`/effort`、`/attach`）加上运行时自己的命令列表，经 `commands/execute` 执行；`@` 自动补全工作区文件并作为上下文附加。
 - 原生 Chat 视图集成：`@dsh` chat participant，支持 `/new`、`/status`、`/model`、`/permission`、`/agent`、`/sessions`、`/compact` 斜杠命令，标准聊天界面里也能用。
 - 状态栏显示后端、会话、模型与权限；输出通道 `dsh-vscode-ok` 记录传输日志。
 - 运行时自动发现：`PATH` 上的 `dsh`、桌面安装（读 Windows 卸载注册表）、npm 全局 shim，或 `npx`，也可以手动指定路径。
+
+## 聊天交互
+
+输入框的行为对齐主流编码代理，但每个决定仍由运行时做出：
+
+- 在输入框开头输入 `/` 会打开可用键盘导航的命令菜单。本地操作驱动扩展本身（新建会话、停止、选择模型、权限、agent、推理强度、附加文件）；运行时命令来自 `commands/list`，通过 `commands/execute` 执行，所以插件、skill 与预设带来的命令无需扩展预先知道就会出现。
+- 输入 `@` 会补全工作区文件。宿主维护一份有上限、带缓存的工作区文件列表；被选中的提及会作为编辑器上下文附加到提示词里。
+- 图片可以直接粘贴或拖进输入框，作为 `image` 内容块放进 `session/prompt`，由运行时转交给模型。
+- 计划面板与用量栏读取运行时投影（`todo` 会话事件与 `tokenUsage`、`contextPressure`），扩展不自己维护任务调度器。
+- 会话选择器先做本地标题过滤，再向运行时请求更深层匹配，并通过 `session/rename`、`session/fork` 重命名或分叉会话。
+
+长对话是增量渲染的：webview 只保留滑动窗口里的消息并提供"显示更早的消息"，markdown 解析带缓存，宿主把高频流式消息合并成每帧一次投递，所以 500 条消息的会话仍然流畅，事件不丢失也不乱序。
 
 ## 环境要求
 

@@ -8,22 +8,41 @@ This project is not affiliated with, endorsed by, or sponsored by DeepSeek. The 
 
 The extension does not reimplement the agent. It launches a local `dsh web` runtime and talks to it over the documented-by-observation HTTP + WebSocket protocol: token exchange, JSON-RPC over `/api/*`, and the remote mux stream at `/api/remote.mux`. Everything in the UI is produced by the real runtime with your own `~/.dsh` profile, models and credentials.
 
-![dsh-vscode-ok chat sidebar with a streaming answer, tool call and approval dialog](media/screenshot-chat.png)
+![dsh-vscode-ok chat sidebar with a streaming answer, plan panel, usage footer and an inline approval card](media/screenshot-chat.png)
+
+| Slash commands and actions | Session search, rename and fork | Wide layout |
+| --- | --- | --- |
+| ![Slash command menu in the composer](media/screenshot-commands.png) | ![Session picker with runtime search results](media/screenshot-sessions.png) | ![Wide layout](media/screenshot-wide.png) |
 
 
 ## Features
 
 - Chat sidebar in the secondary sidebar (activity bar fallback on older VS Code), Preact UI rendered with VS Code theme variables.
-- Streaming assistant text, reasoning, tool calls, todo lists and notices, mapped from the runtime session event stream.
-- Approvals: tool calls that need permission surface as an approval card with the options the runtime advertises, answered back over `/api/$events/result`.
-- Sessions: create, list, switch; title, model, token usage and context pressure from session projections.
-- Models and agent presets picked from the runtime catalog (`session/modelCatalog`, `agentPresets/list`).
-- Permissions preset selection (`read-only`, `workspace-write`, `danger-full-access`) and reasoning effort.
+- Streaming assistant text, collapsible reasoning, tool calls, plan updates and notices, mapped from the runtime session event stream.
+- Copilot-style transcript: session title bar with overflow actions, right-aligned user bubbles, assistant role line, code fences with language and copy, tables, inline diffs and compact tool rows that expand to input, output, diff and child sessions.
+- Approvals: tool calls that need permission surface as an inline approval card with allow once, always allow this tool and skip, answered back over `/api/$events/result`.
+- Plan and usage: the runtime's `todo` updates render as a plan panel with progress, and token/context usage appears under the composer.
+- Sessions: create, list, switch, search (client-side filter plus runtime `session/search`), rename and fork.
+- Models, agent presets and reasoning effort picked from the runtime catalog (`session/modelCatalog`, `agentPresets/list`).
+- Permissions preset selection (`read-only`, `workspace-write`, `danger-full-access`).
 - Workspace edits: file diffs from tool results open in the diff editor, with a patch fallback when only the patch text is available.
-- Editor context: send the selection, the active file, workspace diagnostics or terminal output to the agent as attachments.
+- Editor context: send the selection, the active file, workspace diagnostics or terminal output to the agent as attachments; paste or drop images into the composer.
+- Slash commands: local actions (`/new`, `/stop`, `/model`, `/permission`, `/agent`, `/effort`, `/attach`) plus the runtime's own command list executed through `commands/execute`; `@` mentions autocomplete workspace files and attach them.
 - Native Chat view integration: `@dsh` chat participant with `/new`, `/status`, `/model`, `/permission`, `/agent`, `/sessions`, `/compact` slash commands, so the agent is also reachable from the standard chat UI.
 - Status bar entry with backend state, session, model and permission; output channel `dsh-vscode-ok` for transport logs.
 - Runtime discovery: `dsh` on `PATH`, a DSH desktop install (via the Windows uninstall registry), an npm global shim, or `npx`, plus explicit overrides.
+
+## Chat interactions
+
+The composer behaves like the mainstream coding agents, but every decision belongs to the runtime:
+
+- Type `/` at the start of the draft for a keyboard-navigable command menu. Local actions drive the extension (new session, stop, pick model, permission, agent, effort, attach files); runtime commands come from `commands/list` and are executed with `commands/execute`, so plugin, skill and preset commands appear without the extension knowing them.
+- Type `@` for workspace file autocomplete. The host keeps a capped, cached workspace file list; the typed mention is attached to the prompt as editor context.
+- Paste or drag images into the composer. They are sent as `image` content blocks in `session/prompt`, which the runtime forwards to the model.
+- The plan panel and the usage footer are read from runtime projections (`todo` session events and `tokenUsage`/`contextPressure`); the extension does not maintain its own task scheduler.
+- The session picker searches titles locally and asks the runtime for deeper matches, and can rename or fork a session through `session/rename` and `session/fork`.
+
+Long transcripts render incrementally: the webview keeps a sliding window of messages with a "show earlier" control, memoizes markdown parsing, and the host coalesces high-frequency stream messages into one post per frame, so a 500-message session stays responsive without dropping or reordering events.
 
 ## Requirements
 

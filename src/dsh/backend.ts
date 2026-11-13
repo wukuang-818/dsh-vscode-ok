@@ -1,14 +1,38 @@
 import type {
   AgentPresetInfo,
   Attachment,
+  CommandInfo,
   ModelInfo,
   PermissionPreset,
+  SessionSearchHit,
   SessionSummary,
+  SkillInfo,
 } from '../shared/protocol';
 
 export interface SendInput {
   text: string;
   attachments: Attachment[];
+}
+
+/** Outcome of `session/rename`; the runtime also reports the resulting seq. */
+export interface SessionRenameResult {
+  title: string;
+  seq?: number;
+}
+
+/**
+ * Outcome of one `commands/execute` call.
+ *
+ * `fallbackPrompt` is set when the runtime refused the command RPC and the line
+ * was delivered through `session/prompt` instead; the controller then relies on
+ * the runtime echo rather than appending its own user message.
+ */
+export interface CommandExecutionResult {
+  ok: boolean;
+  text?: string;
+  commandId?: string;
+  sourceEventSeq?: number;
+  fallbackPrompt?: boolean;
 }
 
 export interface BackendLaunchOptions {
@@ -63,6 +87,20 @@ export interface Backend {
   /** Optional capability probe; undefined means "ask the runtime". */
   listModels?(): Promise<ModelInfo[]>;
   listAgentPresets?(): Promise<AgentPresetInfo[]>;
+
+  /**
+   * Optional capabilities. Every method is optional so a transport that lacks
+   * the feature degrades instead of breaking activation.
+   */
+  renameSession?(sessionId: string, title: string): Promise<SessionRenameResult>;
+  /** Forks the session and resolves with the new session id. */
+  forkSession?(sessionId: string): Promise<string>;
+  searchSessions?(query: string): Promise<SessionSearchHit[]>;
+  /** Skills visible to the active session composition. */
+  listSkills?(): Promise<SkillInfo[]>;
+  /** Slash commands advertised for the active agent. */
+  listCommands?(): Promise<CommandInfo[]>;
+  executeCommand?(sessionId: string, line: string): Promise<CommandExecutionResult>;
 }
 
 export interface BackendFactoryOptions extends BackendLaunchOptions {

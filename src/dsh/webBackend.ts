@@ -12,20 +12,32 @@ import { randomUUID } from 'node:crypto';
 import type {
   AgentEvent,
   AgentPresetInfo,
+  CommandInfo,
   ModelInfo,
   PermissionPreset,
+  SessionSearchHit,
   SessionSummary,
+  SkillInfo,
 } from '../shared/protocol';
 import { log } from '../log';
-import type { Backend, BackendFactoryOptions, SendInput } from './backend';
+import type {
+  Backend,
+  BackendFactoryOptions,
+  CommandExecutionResult,
+  SendInput,
+  SessionRenameResult,
+} from './backend';
 import { DshWebError, WebClient, type StreamHandle } from './webClient';
 import {
-  buildPromptText,
+  buildPromptContent,
   createWireContext,
   mapAgentPresetList,
+  mapCommandList,
   mapFollowItem,
   mapModelCatalog,
   mapSessionList,
+  mapSessionSearchResult,
+  mapSkillList,
   parseModelId,
   resetTurnState,
   sessionEvent,
@@ -156,7 +168,7 @@ export class WebBackend implements Backend {
     this.ctx.expectUserEcho = true;
     this.ctx.running = true;
     const requestId = randomUUID();
-    const text = buildPromptText(input);
+    const content = buildPromptContent(input);
     this.emit([sessionEvent(this.ctx)]);
 
     const timeoutMs = this.options.commandTimeoutMs ?? 120_000;
@@ -168,7 +180,7 @@ export class WebBackend implements Backend {
             requestId,
             sessionId,
             mode: 'queue',
-            content: [{ type: 'text', text }],
+            content,
           },
         },
         { timeoutMs },
@@ -379,6 +391,152 @@ export class WebBackend implements Backend {
       throw error;
     }
     this.emit([{ type: 'approval', request: null }]);
+  }
+
+  // -- capability RPCs ----------------------------------------------------
+
+  async renameSession(sessionId: string, title: string): Promise<SessionRenameResult> {
+    const client = this.requireClient();
+    const trimmed = title.trim();
+    if (!trimmed) {
+      throw new DshWebError('session/title-empty', 'A session title cannot be empty.');
+    }
+    try {
+      const result = await client.rpc<unknown>('session/rename', {
+        request: { sessionId, title: trimmed },
+      });
+      const renamed = stringField(result, 'title') ?? trimmed;
+      const seq = isRecord(result) && typeof result.seq === 'number' ? result.seq : undefined;
+      if (this.ctx.sessionId === sessionId) {
+        this.ctx.title = renamed;
+        this.emit([sessionEvent(this.ctx)]);
+      }
+      this.replaceKnownSessionTitle(sessionId, renamed);
+      return { title: renamed, ...(seq !== undefined ? { seq } : {}) };
+    } catch (error) {
+      this.notice('error', `Could not rename the session: ${errorText(error)}`);
+      throw error;
+    }
+  }
+
+  async forkSession(sessionId: string): Promise<string> {
+    const client = this.requireClient();
+    try {
+      const result = await client.rpc<unknown>('session/fork', { request: { sessionId } });
+      const forked = stringField(result, 'sessionId');
+      if (!forked) {
+        throw new DshWebError('session/fork', 'session/fork returned no sessionId.');
+      }
+      return forked;
+    } catch (error) {
+      this.notice('error', `Could not fork the session: ${errorText(error)}`);
+      throw error;
+    }
+  }
+
+  async searchSessions(query: string): Promise<SessionSearchHit[]> {
+    const client = this.requireClient();
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    try {
+      const value = await client.rpc<unknown>('session/search', { request: { query: trimmed } });
+      return mapSessionSearchResult(value);
+    } catch (error) {
+      log('webBackend: session search unavailable', errorText(error));
+      throw error;
+    }
+  }
+
+  async listSkills(): Promise<SkillInfo[]> {
+    const client = this.requireClient();
+    const sessionId = this.ctx.sessionId;
+    if (!sessionId) return [];
+    const value = await client.rpc<unknown>('skills/list', { request: { sessionId } });
+    return mapSkillList(value);
+  }
+
+  /**
+   * `commands/list` takes a lookup parameter named `agent`; the gateway rewrites
+   * it to `agentId` on the wire. The 0.2 gateway has been seen to reject both
+   * shapes, so the documented alternatives are tried once and the capability
+   * then degrades to an empty list instead of failing activation.
+   */
+  async listCommands(): Promise<CommandInfo[]> {
+    const client = this.requireClient();
+    const sessionId = this.ctx.sessionId;
+    if (!sessionId) return [];
+    const attemptArgs: Array<Record<string, unknown>> = [
+      { agentId: sessionId },
+      { agent: sessionId },
+      { request: { agentId: sessionId } },
+    ];
+    let failure: unknown;
+    for (const args of attemptArgs) {
+      try {
+        const value = await client.rpc<unknown>('commands/list', args);
+        return mapCommandList(value);
+      } catch (error) {
+        failure = error;
+        const code = error instanceof DshWebError ? error.code : '';
+        if (code !== 'gateway/arguments-invalid') {
+          break;
+        }
+      }
+    }
+    log('webBackend: commands/list unavailable', errorText(failure));
+    return [];
+  }
+
+  async executeCommand(sessionId: string, line: string): Promise<CommandExecutionResult> {
+    const client = this.requireClient();
+    const trimmed = line.trim();
+    if (!trimmed) {
+      return { ok: false };
+    }
+    const target = sessionId || (await this.ensureSession());
+    const timeoutMs = this.options.commandTimeoutMs ?? 120_000;
+    try {
+      const value = await client.rpc<unknown>(
+        'commands/execute',
+        { agentId: target, line: trimmed, submittedAttachments: [] },
+        { timeoutMs },
+      );
+      const commandId = stringField(value, 'commandId');
+      const result = isRecord(value) && isRecord(value.result) ? value.result : undefined;
+      const kind = stringField(result, 'kind');
+      const text = stringField(result, 'text');
+      const sourceEventSeq = result && typeof result.sourceEventSeq === 'number' ? result.sourceEventSeq : undefined;
+      // Only the documented fields are surfaced; unknown tool-shaped results
+      // from newer runtimes are dropped instead of breaking the transcript.
+      return {
+        ok: kind !== 'error',
+        ...(text !== undefined ? { text } : {}),
+        ...(commandId !== undefined ? { commandId } : {}),
+        ...(sourceEventSeq !== undefined ? { sourceEventSeq } : {}),
+      };
+    } catch (error) {
+      log('webBackend: commands/execute failed, sending the line as a prompt instead', errorText(error));
+      this.notice('info', `The runtime could not execute ${trimmed} directly; sending it as a prompt.`);
+      await this.send({ text: trimmed, attachments: [] });
+      return { ok: false, fallbackPrompt: true };
+    }
+  }
+
+  private replaceKnownSessionTitle(sessionId: string, title: string): void {
+    let changed = false;
+    this.sessions = this.sessions.map((session) => {
+      if (session.id !== sessionId || session.title === title) return session;
+      changed = true;
+      return { ...session, title };
+    });
+    const context = this.ctx.sessions.get(sessionId);
+    if (context && context.title !== title) {
+      this.ctx.sessions.set(sessionId, { ...context, title });
+      changed = true;
+    }
+    if (changed) {
+      this.emit([{ type: 'sessions', sessions: this.sessions }]);
+    }
   }
 
   // -- internals ----------------------------------------------------------

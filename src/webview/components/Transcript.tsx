@@ -1,14 +1,14 @@
 /**
- * Scrollable transcript. Keeps the view pinned to the newest content while
- * streaming unless the user scrolled away, in which case a jump-to-bottom pill
- * appears. Tool calls that never received a message part are rendered after the
- * messages so they stay visible.
+ * Transcript scroller: messages, the inline approval card, an empty-state
+ * welcome block, and an auto-scroll that yields to the reader.
  */
 
 import type { ApprovalRequest, ChatState, ToolCall } from '../../shared/protocol';
 import type { JSX } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ChevronIcon } from '../icons';
+import { ApprovalDialog } from './ApprovalDialog';
+import { EmptyState } from './EmptyState';
 import { MessageView } from './MessageView';
 import { ToolCard } from './ToolCard';
 
@@ -18,11 +18,16 @@ export interface TranscriptProps {
   onOpenDiff(toolId: string): void;
   onOpenFile(path: string, line?: number, endLine?: number): void;
   onCopy(text: string): void;
-  onApproval(id: string, optionId: string): void;
+  onApproval(approvalId: string, optionId: string): void;
+  onStartBackend(): void;
+  onUseExample(text: string): void;
 }
 
-/** Distance from the bottom (px) that still counts as "stuck to bottom". */
-const STICK_THRESHOLD = 48;
+const BOTTOM_THRESHOLD = 28;
+
+/** Messages rendered by default; older ones stay behind a "show earlier" step. */
+const DEFAULT_WINDOW = 120;
+const WINDOW_STEP = 200;
 
 export function Transcript({
   chat,
@@ -31,89 +36,188 @@ export function Transcript({
   onOpenFile,
   onCopy,
   onApproval,
+  onStartBackend,
+  onUseExample,
 }: TranscriptProps): JSX.Element {
-  const scrollerRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
+  const lastUserIdRef = useRef<string | null>(null);
   const [detached, setDetached] = useState(false);
+  const [windowSize, setWindowSize] = useState(DEFAULT_WINDOW);
+  const restoreHeightRef = useRef<number | null>(null);
 
-  const scrollToBottom = (behavior: ScrollBehavior): void => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return;
-    scroller.scrollTo({ top: scroller.scrollHeight, behavior });
-  };
+  const empty = chat.messages.length === 0;
+  const firstVisible = Math.max(0, chat.messages.length - windowSize);
+  const visibleMessages = firstVisible > 0 ? chat.messages.slice(firstVisible) : chat.messages;
 
-  // Runs after every render (cheap): while streaming, each delta re-renders.
-  useEffect(() => {
-    if (stickRef.current) scrollToBottom('auto');
-  });
+  const isAtBottom = (element: HTMLElement): boolean =>
+    element.scrollHeight - element.scrollTop - element.clientHeight <= BOTTOM_THRESHOLD;
 
-  const handleScroll = (): void => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return;
-    const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
-    const stick = distance < STICK_THRESHOLD;
-    stickRef.current = stick;
-    if (detached === stick) setDetached(!stick);
-  };
-
-  const jumpToBottom = (): void => {
+  const scrollToLatest = (smooth: boolean): void => {
+    const element = scrollerRef.current;
+    if (!element) return;
     stickRef.current = true;
     setDetached(false);
-    scrollToBottom('smooth');
+    element.scrollTo({ top: element.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
   };
 
-  const referenced = new Set<string>();
+  const handleScroll = (): void => {
+    const element = scrollerRef.current;
+    if (!element) return;
+    const atBottom = isAtBottom(element);
+    stickRef.current = atBottom;
+    setDetached(!atBottom);
+  };
+
+  useEffect(() => {
+    const element = scrollerRef.current;
+    if (!element) return;
+
+    const last = chat.messages[chat.messages.length - 1];
+    if (last && last.role === 'user' && last.id !== lastUserIdRef.current) {
+      lastUserIdRef.current = last.id;
+      stickRef.current = true;
+      setDetached(false);
+    }
+    if (stickRef.current) element.scrollTop = element.scrollHeight;
+  }, [chat.messages, chat.tools, approval]);
+
+  // Keep the newest content visible when the viewport or the content itself
+  // resizes, e.g. a toast appearing or a tool card expanding.
+  useEffect(() => {
+    const element = scrollerRef.current;
+    if (!element || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(() => {
+      if (stickRef.current) element.scrollTop = element.scrollHeight;
+    });
+    const observe = (): void => {
+      observer.disconnect();
+      observer.observe(element);
+      for (const child of Array.from(element.children)) observer.observe(child);
+    };
+    observe();
+    const mutations =
+      typeof MutationObserver === 'undefined'
+        ? null
+        : new MutationObserver(observe);
+    mutations?.observe(element, { childList: true });
+    return () => {
+      observer.disconnect();
+      mutations?.disconnect();
+    };
+  }, []);
+
+  // Growing the window prepends content, so keep the reader on the same message
+  // by shifting scrollTop with the height the prepend added.
+  useEffect(() => {
+    const element = scrollerRef.current;
+    const previous = restoreHeightRef.current;
+    if (!element || previous === null) return;
+    restoreHeightRef.current = null;
+    const added = element.scrollHeight - previous;
+    if (added > 0) element.scrollTop += added;
+  }, [windowSize]);
+
+  const showEarlier = (): void => {
+    const element = scrollerRef.current;
+    if (element) restoreHeightRef.current = element.scrollHeight;
+    setWindowSize((size) => size + WINDOW_STEP);
+  };
+
+  const focusApproval = (): void => {
+    const card = scrollerRef.current?.querySelector<HTMLElement>('.approval-card');
+    if (!card) return;
+    card.scrollIntoView({ block: 'nearest' });
+    card.querySelector<HTMLButtonElement>('.approval-primary')?.focus();
+  };
+
+  const referencedTools = new Set<string>();
   for (const message of chat.messages) {
     for (const part of message.parts) {
-      if (part.type === 'tool') referenced.add(part.toolId);
+      if (part.type === 'tool') referencedTools.add(part.toolId);
     }
   }
-  const orphans: ToolCall[] = Object.entries(chat.tools)
-    .filter(([id]) => !referenced.has(id))
-    .map(([, tool]) => tool);
+  const orphanTools: ToolCall[] = Object.values(chat.tools)
+    .filter((tool) => !referencedTools.has(tool.id))
+    .sort((left, right) => left.startedAt - right.startedAt);
+
+  const approvalFor = (tool: ToolCall): ApprovalRequest | null =>
+    approval !== null &&
+    ((tool.approvalId !== undefined && approval.id === tool.approvalId) ||
+      (approval.toolCallId !== undefined && approval.toolCallId === tool.id))
+      ? approval
+      : null;
 
   return (
     <div class="transcript-wrap">
       <div
-        class="transcript"
         ref={scrollerRef}
-        role="log"
-        aria-live="polite"
-        aria-relevant="additions text"
+        class={`transcript${empty ? ' is-empty' : ''}`}
         onScroll={handleScroll}
       >
-        {chat.messages.map((message) => (
-          <MessageView
-            key={message.id}
-            message={message}
-            tools={chat.tools}
-            approval={approval}
-            onOpenDiff={onOpenDiff}
-            onOpenFile={onOpenFile}
-            onCopy={onCopy}
-            onApproval={onApproval}
+        {empty ? (
+          <EmptyState
+            backendStatus={chat.backend.status}
+            backendDetail={chat.backend.detail}
+            onStart={onStartBackend}
+            onUseExample={onUseExample}
           />
-        ))}
-        {orphans.length > 0 && (
+        ) : (
+          <>
+            {firstVisible > 0 ? (
+              <button type="button" class="transcript-earlier" onClick={showEarlier}>
+                Show earlier messages ({firstVisible})
+              </button>
+            ) : null}
+            {visibleMessages.map((message) => (
+              <MessageView
+                key={message.id}
+                message={message}
+                tools={chat.tools}
+                approvals={approval === null ? [] : [approval]}
+                onOpenDiff={onOpenDiff}
+                onOpenFile={onOpenFile}
+                onCopy={onCopy}
+                onReviewApproval={focusApproval}
+              />
+            ))}
+          </>
+        )}
+
+        {orphanTools.length > 0 ? (
           <div class="transcript-orphans">
-            {orphans.map((tool) => (
+            {orphanTools.map((tool) => (
               <ToolCard
                 key={tool.id}
                 tool={tool}
-                approval={approval}
+                approval={approvalFor(tool)}
                 onOpenDiff={onOpenDiff}
-                onApproval={onApproval}
+                onOpenFile={onOpenFile}
+                onReviewApproval={focusApproval}
               />
             ))}
           </div>
-        )}
+        ) : null}
+
+        {approval !== null ? (
+          <ApprovalDialog
+            request={approval}
+            onAnswer={(optionId) => onApproval(approval.id, optionId)}
+          />
+        ) : null}
       </div>
-      {detached && (
-        <button type="button" class="jump-pill" onClick={jumpToBottom} aria-label="Jump to latest message">
-          <ChevronIcon size={12} class="chev chev-up" />
-          <span>Latest</span>
+
+      {detached ? (
+        <button
+          type="button"
+          class="scroll-bottom"
+          title="Scroll to latest"
+          aria-label="Scroll to latest"
+          onClick={() => scrollToLatest(true)}
+        >
+          <ChevronIcon size={14} />
         </button>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -19,9 +19,11 @@ import type {
   DeepPartial,
   HostMessage,
   MessageStatus,
+  SessionSearchHit,
   SessionSummary,
   ToolCall,
 } from '../shared/protocol';
+import type { UsageSummary } from './util';
 
 /* ------------------------------------------------------------------ */
 /* Webview-owned state                                                 */
@@ -58,12 +60,18 @@ export interface AppState {
   /** Latest composer prefill from the host. */
   composerFill: ComposerFill | null;
   composerSeq: number;
+  /**
+   * Host matches for the session-picker query (`search-results`). Cleared when
+   * the query changes so stale hits never render against a new search.
+   */
+  sessionSearch: SessionSearchHit[];
 }
 
 export type AppAction =
   | { type: 'host'; message: HostMessage }
   | { type: 'approval-answer' }
-  | { type: 'dismiss-toast'; id: number };
+  | { type: 'dismiss-toast'; id: number }
+  | { type: 'clear-search' };
 
 export function createInitialState(): AppState {
   return {
@@ -74,6 +82,7 @@ export function createInitialState(): AppState {
     focusRequest: 0,
     composerFill: null,
     composerSeq: 0,
+    sessionSearch: [],
   };
 }
 
@@ -99,6 +108,9 @@ export function emptyChatState(): ChatState {
     sessions: [],
     models: [],
     agentPresets: [],
+    files: [],
+    commands: [],
+    skills: [],
     config: { includeDiagnostics: true, confirmBeforeSend: true },
   };
 }
@@ -318,6 +330,14 @@ function reduceHost(state: AppState, message: HostMessage): AppState {
       return updateChat(state, (chat) => ({ ...chat, models: message.models.slice() }));
     case 'agent-presets':
       return updateChat(state, (chat) => ({ ...chat, agentPresets: message.presets.slice() }));
+    case 'files':
+      return updateChat(state, (chat) => ({ ...chat, files: message.files.slice() }));
+    case 'commands':
+      return updateChat(state, (chat) => ({ ...chat, commands: message.commands.slice() }));
+    case 'skills':
+      return updateChat(state, (chat) => ({ ...chat, skills: message.skills.slice() }));
+    case 'search-results':
+      return { ...state, sessionSearch: message.items.slice() };
     case 'clear':
       return state.chat ? { ...state, chat: clearTranscript(state.chat), approval: null } : state;
     case 'message':
@@ -361,6 +381,8 @@ export function reduceApp(state: AppState, action: AppAction): AppState {
       return { ...state, approval: null };
     case 'dismiss-toast':
       return { ...state, toasts: state.toasts.filter((toast) => toast.id !== action.id) };
+    case 'clear-search':
+      return state.sessionSearch.length === 0 ? state : { ...state, sessionSearch: [] };
     default:
       return state;
   }
@@ -450,4 +472,55 @@ export function selectDismissOption(request: ApprovalRequest): string {
   if (!choices) return '';
   if (choices.reject) return choices.reject.id;
   return choices.approve.id;
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Token and context numbers for the composer usage footer.
+ *
+ * `SessionUsage` carries the sanitized fields (`inputTokens`, `outputTokens`,
+ * `contextUsed`, `contextWindow`); a host that forwards the raw snapshot may
+ * also pass `tokenUsage` and `contextPressure` (`{ used, total }` or a plain
+ * number), so both shapes are accepted. Returns `null` when nothing is known.
+ */
+export function selectUsage(state: AppState): UsageSummary | null {
+  const raw: unknown = state.chat?.session.usage;
+  if (typeof raw !== 'object' || raw === null) return null;
+  const usage = raw as Record<string, unknown>;
+
+  const tokenUsage = isPlainObject(usage.tokenUsage) ? usage.tokenUsage : undefined;
+  const total = finiteNumber(tokenUsage?.total) ?? finiteNumber(usage.total) ?? finiteNumber(usage.tokens);
+  const input = finiteNumber(usage.inputTokens);
+  const output = finiteNumber(usage.outputTokens);
+  const tokens = total ?? (input === null && output === null ? null : (input ?? 0) + (output ?? 0));
+
+  let contextUsed = finiteNumber(usage.contextUsed);
+  let contextWindow = finiteNumber(usage.contextWindow);
+  const pressure = usage.contextPressure;
+  if (typeof pressure === 'number') {
+    contextUsed = contextUsed ?? finiteNumber(pressure);
+  } else if (isPlainObject(pressure)) {
+    contextUsed =
+      contextUsed ??
+      finiteNumber(pressure.used) ??
+      finiteNumber(pressure.usedTokens) ??
+      finiteNumber(pressure.contextUsed) ??
+      finiteNumber(pressure.tokens);
+    contextWindow =
+      contextWindow ??
+      finiteNumber(pressure.total) ??
+      finiteNumber(pressure.windowTokens) ??
+      finiteNumber(pressure.contextWindow);
+  }
+
+  if (tokens === null && contextUsed === null && contextWindow === null) return null;
+  return { tokens, contextUsed, contextWindow };
+}
+
+/** Host matches for the current session search (empty when none arrived). */
+export function selectSessionSearch(state: AppState): SessionSearchHit[] {
+  return state.sessionSearch;
 }

@@ -5,17 +5,27 @@ import type {
   ChatMessage,
   ChatPart,
   ChatState,
+  CommandInfo,
   HostMessage,
   ModelInfo,
   PermissionPreset,
   SessionInfo,
   SessionSummary,
+  SkillInfo,
   ToolCall,
 } from '../shared/protocol';
 import { readConfig, workspaceInfo, type ExtensionConfig } from '../config';
 import { log } from '../log';
 import { errorMessage, uid } from '../util';
 import type { Backend } from '../dsh/backend';
+import { PostBatcher } from '../hostBatch';
+import {
+  WORKSPACE_FILE_QUERY_LIMIT,
+  WORKSPACE_FILES_GLOB,
+  filterWorkspaceFiles,
+  loadWorkspaceFiles,
+  type WorkspaceFileFinder,
+} from '../workspaceFiles';
 
 export type WebviewSink = (message: HostMessage) => void;
 
@@ -23,6 +33,12 @@ interface RegisteredView {
   sink: WebviewSink;
   visible: boolean;
 }
+
+/** Production file finder backed by VS Code's file search. */
+const vscodeFileFinder: WorkspaceFileFinder = async (exclude, maxResults) => {
+  const uris = await vscode.workspace.findFiles(WORKSPACE_FILES_GLOB, exclude, maxResults);
+  return uris.map((uri) => uri.fsPath);
+};
 
 function emptySession(config: ExtensionConfig): SessionInfo {
   return {
@@ -37,6 +53,14 @@ function emptySession(config: ExtensionConfig): SessionInfo {
 
 function findTextPart(message: ChatMessage, index: number): ChatPart | undefined {
   return message.parts[index];
+}
+
+function sameFiles(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
 }
 
 export interface SendResult {
@@ -59,6 +83,11 @@ export class ChatController implements vscode.Disposable {
   private activeTurn: { userMessageId: string; assistantMessageId?: string } | undefined;
   private currentApproval: import('../shared/protocol').ApprovalRequest | undefined;
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly batcher: PostBatcher<HostMessage>;
+  private filesLoading: Promise<string[]> | undefined;
+  /** `<sessionId>|<agentPreset>` the command/skill lists were loaded for. */
+  private capabilitiesKey: string | undefined;
+  private capabilitiesLoading = false;
 
   constructor(private readonly createBackend: (emit: (event: AgentEvent) => void) => Backend) {
     this.config = readConfig();
@@ -71,11 +100,15 @@ export class ChatController implements vscode.Disposable {
       sessions: [],
       models: [],
       agentPresets: [],
+      files: [],
+      commands: [],
+      skills: [],
       config: {
         includeDiagnostics: this.config.includeDiagnostics,
         confirmBeforeSend: this.config.confirmBeforeSend,
       },
     };
+    this.batcher = new PostBatcher<HostMessage>((message) => this.deliver(message));
     this.disposables.push(
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration('dsh')) {
@@ -85,11 +118,13 @@ export class ChatController implements vscode.Disposable {
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
         this.state.workspace = workspaceInfo();
         this.post({ type: 'state', patch: { workspace: this.state.workspace } });
+        void this.loadWorkspaceFiles(true);
       }),
     );
   }
 
   dispose(): void {
+    this.batcher.dispose();
     for (const disposable of this.disposables) {
       disposable.dispose();
     }
@@ -117,7 +152,17 @@ export class ChatController implements vscode.Disposable {
     return [...this.views].some((view) => view.visible);
   }
 
+  /**
+   * Queue a host message. Streaming messages are coalesced by {@link PostBatcher}
+   * and flushed on a 16 ms timer; control messages go out immediately after any
+   * pending batch, so the webview always sees data before the state that
+   * describes it.
+   */
   post(message: HostMessage): void {
+    this.batcher.enqueue(message);
+  }
+
+  private deliver(message: HostMessage): void {
     for (const view of this.views) {
       try {
         view.sink(message);
@@ -205,6 +250,11 @@ export class ChatController implements vscode.Disposable {
     this.setBackend('stopped', 'Restarting…');
     this.state.messages = [];
     this.state.tools = {};
+    this.state.commands = [];
+    this.state.skills = [];
+    this.capabilitiesKey = undefined;
+    this.post({ type: 'commands', commands: [] });
+    this.post({ type: 'skills', skills: [] });
     this.post({ type: 'clear' });
     await this.ensureStarted();
   }
@@ -212,6 +262,7 @@ export class ChatController implements vscode.Disposable {
   async stop(): Promise<void> {
     await this.backendInstance?.stop();
     this.backendInstance = undefined;
+    this.capabilitiesKey = undefined;
     this.setBackend('stopped');
   }
 
@@ -299,6 +350,235 @@ export class ChatController implements vscode.Disposable {
     } catch (error) {
       log('list sessions failed:', errorMessage(error));
     }
+  }
+
+  /* ---------------------------------------------------------------- */
+  /* Capabilities (files, commands, skills)                           */
+  /* ---------------------------------------------------------------- */
+
+  /**
+   * Index the workspace for `@`-mention completion. Never throws: a failed index
+   * keeps the previous list and is only logged.
+   */
+  private loadWorkspaceFiles(force = false): Promise<string[]> {
+    if (this.filesLoading) {
+      return this.filesLoading;
+    }
+    const root = this.state.workspace.cwd;
+    const loading = (async () => {
+      try {
+        const files = await loadWorkspaceFiles({ root, finder: vscodeFileFinder, force });
+        const changed = !sameFiles(this.state.files, files);
+        this.state.files = files;
+        if (changed) {
+          this.post({ type: 'files', files });
+        }
+        return files;
+      } catch (error) {
+        log('workspace file index failed:', errorMessage(error));
+        return this.state.files;
+      }
+    })();
+    this.filesLoading = loading;
+    void loading.finally(() => {
+      if (this.filesLoading === loading) {
+        this.filesLoading = undefined;
+      }
+    });
+    return loading;
+  }
+
+  /**
+   * Refetch the command and skill catalogs when the session or agent preset
+   * changed. Failures are logged and leave the previous arrays untouched.
+   */
+  private async refreshCapabilities(force = false): Promise<void> {
+    const sessionId = this.state.session.id;
+    if (!sessionId) {
+      return;
+    }
+    const key = `${sessionId}|${this.state.session.agentPreset ?? ''}`;
+    if (!force && key === this.capabilitiesKey) {
+      return;
+    }
+    if (this.capabilitiesLoading) {
+      return;
+    }
+    this.capabilitiesKey = key;
+    this.capabilitiesLoading = true;
+    try {
+      if (this.backendInstance?.listCommands) {
+        try {
+          const commands = await this.backendInstance.listCommands();
+          this.state.commands = commands;
+          this.post({ type: 'commands', commands });
+        } catch (error) {
+          log('list commands failed:', errorMessage(error));
+        }
+      }
+      if (this.backendInstance?.listSkills) {
+        try {
+          const skills = await this.backendInstance.listSkills();
+          this.state.skills = skills;
+          this.post({ type: 'skills', skills });
+        } catch (error) {
+          log('list skills failed:', errorMessage(error));
+        }
+      }
+    } finally {
+      this.capabilitiesLoading = false;
+    }
+  }
+
+  /** Kick off the background loads without blocking the UI. */
+  private startBackgroundLoads(): void {
+    void this.loadWorkspaceFiles();
+    void this.refreshCapabilities();
+  }
+
+  private async pickReasoningEffort(): Promise<void> {
+    await this.ensureStarted();
+    const model = this.state.session.model;
+    const efforts = model?.reasoningEfforts ?? [];
+    if (efforts.length === 0) {
+      void vscode.window.showWarningMessage('The selected model does not advertise reasoning efforts.');
+      this.post({ type: 'toast', level: 'warning', text: 'No reasoning efforts are available for this model.' });
+      return;
+    }
+    const picked = await vscode.window.showQuickPick(
+      efforts.map((effort) => ({
+        label: effort,
+        description: effort === this.state.session.reasoningEffort ? 'current' : undefined,
+        id: effort,
+      })),
+      { title: 'Reasoning effort', placeHolder: model?.defaultReasoningEffort },
+    );
+    if (!picked) {
+      return;
+    }
+    try {
+      await this.backend.setReasoningEffort(picked.id);
+      this.state.session.reasoningEffort = picked.id;
+      this.post({ type: 'session', session: this.state.session });
+    } catch (error) {
+      this.post({
+        type: 'toast',
+        level: 'error',
+        text: `Could not set the reasoning effort: ${errorMessage(error)}`,
+      });
+    }
+  }
+
+  private async renameSession(sessionId: string, title: string): Promise<void> {
+    const trimmed = title.trim();
+    if (!sessionId || !trimmed) {
+      return;
+    }
+    await this.ensureStarted();
+    if (!this.backend.renameSession) {
+      this.post({ type: 'toast', level: 'warning', text: 'This transport cannot rename sessions.' });
+      return;
+    }
+    try {
+      const result = await this.backend.renameSession(sessionId, trimmed);
+      if (this.state.session.id === sessionId) {
+        this.state.session.title = result.title;
+        this.post({ type: 'session', session: this.state.session });
+      }
+      await this.requestSessions();
+      this.post({ type: 'toast', level: 'info', text: `Renamed to ${result.title}` });
+    } catch (error) {
+      this.post({ type: 'toast', level: 'error', text: `Rename failed: ${errorMessage(error)}` });
+    }
+  }
+
+  private async forkSession(sessionId: string): Promise<void> {
+    await this.ensureStarted();
+    if (!this.backend.forkSession) {
+      this.post({ type: 'toast', level: 'warning', text: 'This transport cannot fork sessions.' });
+      return;
+    }
+    try {
+      const forked = await this.backend.forkSession(sessionId);
+      if (!forked) {
+        return;
+      }
+      await this.switchSession(forked);
+      await this.requestSessions();
+      this.post({ type: 'toast', level: 'info', text: 'Forked into a new session.' });
+    } catch (error) {
+      this.post({ type: 'toast', level: 'error', text: `Fork failed: ${errorMessage(error)}` });
+    }
+  }
+
+  private async searchSessions(query: string): Promise<void> {
+    const trimmed = query.trim();
+    if (!trimmed) {
+      this.post({ type: 'search-results', items: [] });
+      return;
+    }
+    try {
+      await this.ensureStarted();
+    } catch (error) {
+      log('session search failed:', errorMessage(error));
+      this.post({ type: 'search-results', items: [] });
+      return;
+    }
+    if (!this.backend.searchSessions) {
+      this.post({ type: 'search-results', items: [] });
+      return;
+    }
+    try {
+      const items = await this.backend.searchSessions(trimmed);
+      this.post({ type: 'search-results', items });
+    } catch (error) {
+      log('session search failed:', errorMessage(error));
+      // An empty result keeps the picker responsive; the failure is in the log.
+      this.post({ type: 'search-results', items: [] });
+    }
+  }
+
+  /**
+   * Run a slash command. When the transport could not execute it and sent the
+   * line as a prompt instead, the runtime echoes the user message, so the
+   * controller must not append a second copy.
+   */
+  private async executeCommand(name: string, line: string): Promise<void> {
+    const commandLine = line.trim() || (name.trim() ? `/${name.trim().replace(/^\//, '')}` : '');
+    if (!commandLine) {
+      return;
+    }
+    await this.ensureStarted();
+    if (!this.backend.executeCommand) {
+      await this.sendPrompt(commandLine);
+      return;
+    }
+    try {
+      const result = await this.backend.executeCommand(this.state.session.id ?? '', commandLine);
+      if (result.fallbackPrompt) {
+        return;
+      }
+      this.appendUserLine(commandLine);
+      if (result.text) {
+        this.appendAssistantNotice(result.ok ? 'info' : 'warning', result.text);
+      }
+    } catch (error) {
+      log('execute command failed:', errorMessage(error));
+      this.post({ type: 'toast', level: 'error', text: `Command failed: ${errorMessage(error)}` });
+    }
+  }
+
+  /** Append a locally originated user message (no runtime echo expected). */
+  private appendUserLine(text: string): void {
+    const message: ChatMessage = {
+      id: uid('user'),
+      role: 'user',
+      createdAt: Date.now(),
+      status: 'done',
+      parts: [{ type: 'text', text }],
+    };
+    this.state.messages.push(message);
+    this.post({ type: 'message', message });
   }
 
   async pickModelFromWebview(): Promise<void> {
@@ -434,11 +714,13 @@ export class ChatController implements vscode.Disposable {
     switch (event.type) {
       case 'backend-ready': {
         this.setBackend('ready', event.detail, this.state.backend.reused);
+        this.startBackgroundLoads();
         break;
       }
       case 'backend-exit': {
         this.setBackend('error', event.error ?? `The agent runtime exited (code ${event.code ?? '?'})`);
         this.state.session.running = false;
+        this.capabilitiesKey = undefined;
         this.post({ type: 'session', session: this.state.session });
         break;
       }
@@ -449,6 +731,9 @@ export class ChatController implements vscode.Disposable {
         if (previousId !== this.state.session.id) {
           this.refreshConfig();
         }
+        // Both loads are cached: files are re-posted only when the index
+        // changed, commands/skills only when session or preset changed.
+        this.startBackgroundLoads();
         break;
       }
       case 'sessions': {
@@ -701,6 +986,34 @@ export class ChatController implements vscode.Disposable {
         if (this.state.session.id) {
           await vscode.env.clipboard.writeText(this.state.session.id);
         }
+        break;
+      }
+      case 'request-files': {
+        const files = this.state.files.length > 0 ? this.state.files : await this.loadWorkspaceFiles();
+        this.post({
+          type: 'files',
+          files: filterWorkspaceFiles(files, message.query, WORKSPACE_FILE_QUERY_LIMIT),
+        });
+        break;
+      }
+      case 'pick-effort': {
+        await this.pickReasoningEffort();
+        break;
+      }
+      case 'rename-session': {
+        await this.renameSession(message.sessionId, message.title);
+        break;
+      }
+      case 'fork-session': {
+        await this.forkSession(message.sessionId);
+        break;
+      }
+      case 'search-sessions': {
+        await this.searchSessions(message.query);
+        break;
+      }
+      case 'execute-command': {
+        await this.executeCommand(message.name, message.line);
         break;
       }
       default:

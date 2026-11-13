@@ -1,66 +1,105 @@
 /**
- * Zero-message landing view: short intro, backend start/restart affordance,
- * keybinding hint and a few example prompts.
+ * Welcome block shown when the chat has no messages yet.
+ *
+ * It lives inside the transcript scroller so the composer stays anchored at the
+ * bottom and an approval card can still appear underneath the suggestions.
  */
 
 import type { BackendStatus } from '../../shared/protocol';
-import type { JSX } from 'preact';
-import { RefreshIcon, SparkleIcon } from '../icons';
+import type { ComponentType, JSX } from 'preact';
+import {
+  BookIcon,
+  BugIcon,
+  FlaskIcon,
+  PulseIcon,
+  RefreshIcon,
+  SelectionIcon,
+  SparkleIcon,
+  WarningIcon,
+} from '../icons';
+import type { IconProps } from '../icons';
 
 export interface EmptyStateProps {
   backendStatus: BackendStatus;
   backendDetail?: string;
   onStart(): void;
-  onRestart(): void;
   onUseExample(text: string): void;
 }
 
-const EXAMPLES = [
-  'Explain this codebase',
-  'Find and fix a bug',
-  'Add a test for the active file',
+interface Suggestion {
+  label: string;
+  icon: ComponentType<IconProps>;
+}
+
+const SUGGESTIONS: readonly Suggestion[] = [
+  { label: 'Explain this codebase', icon: BookIcon },
+  { label: 'Find a bug in the current file', icon: BugIcon },
+  { label: 'Write tests for a file', icon: FlaskIcon },
+  { label: 'Explain the current selection', icon: SelectionIcon },
+  { label: 'Run diagnostics and fix them', icon: PulseIcon },
 ];
 
 export function EmptyState({
   backendStatus,
   backendDetail,
   onStart,
-  onRestart,
   onUseExample,
 }: EmptyStateProps): JSX.Element {
+  const ready = backendStatus === 'ready';
+
   return (
     <div class="empty">
-      <div class="empty-mark" aria-hidden="true">
-        <SparkleIcon size={22} />
-      </div>
-      <h1 class="empty-title">dsh-vscode-ok</h1>
-      <p class="empty-intro">
-        An agent for your workspace: read and edit files, run commands, and explain what it changed.
-      </p>
-      {backendStatus === 'stopped' && (
-        <button type="button" class="btn btn-primary empty-start" onClick={onStart}>
-          Start dsh-vscode-ok
-        </button>
-      )}
-      {backendStatus === 'error' && (
-        <div class="empty-failure">
-          <p class="empty-error">{backendDetail !== undefined && backendDetail !== '' ? backendDetail : 'The backend failed to start.'}</p>
-          <button type="button" class="btn btn-secondary empty-start" onClick={onRestart}>
-            <RefreshIcon size={12} />
-            <span>Restart dsh-vscode-ok</span>
-          </button>
+      <div class="empty-inner">
+        <div class="empty-mark" aria-hidden="true">
+          <SparkleIcon size={20} />
         </div>
-      )}
-      {backendStatus === 'starting' && <p class="empty-status">Starting backend…</p>}
-      <p class="empty-hint">
-        Focus this view anytime with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd>
-      </p>
-      <div class="empty-examples">
-        {EXAMPLES.map((example) => (
-          <button type="button" class="example-btn" key={example} onClick={() => onUseExample(example)}>
-            {example}
-          </button>
-        ))}
+        <h1 class="empty-title">How can I help?</h1>
+        <p class="empty-sub">Ask about this workspace, or start with one of these.</p>
+
+        {backendStatus === 'starting' ? (
+          <p class="empty-note" role="status">
+            Starting the backend…
+          </p>
+        ) : null}
+
+        {backendStatus === 'stopped' ? (
+          <div class="empty-note-block">
+            <p class="empty-note">The backend is stopped.</p>
+            <button type="button" class="btn btn-primary" onClick={onStart}>
+              <RefreshIcon size={12} />
+              Start backend
+            </button>
+          </div>
+        ) : null}
+
+        {backendStatus === 'error' ? (
+          <div class="empty-error" role="alert">
+            <WarningIcon size={13} class="empty-error-icon" />
+            <div class="empty-error-body">
+              <p class="empty-error-text">{backendDetail ?? 'The backend stopped unexpectedly.'}</p>
+              <button type="button" class="btn btn-secondary" onClick={onStart}>
+                <RefreshIcon size={12} />
+                Restart backend
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div class="empty-suggestions" aria-label="Suggested prompts">
+          {SUGGESTIONS.map(({ label, icon: Icon }) => (
+            <button
+              key={label}
+              type="button"
+              class="suggestion"
+              onClick={() => onUseExample(label)}
+              disabled={!ready}
+              title={ready ? label : 'Start the backend to send a message'}
+            >
+              <Icon size={14} class="suggestion-icon" />
+              <span class="suggestion-label">{label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
