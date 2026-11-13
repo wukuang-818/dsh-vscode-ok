@@ -1,5 +1,7 @@
 # dsh-vscode-ok
 
+[中文说明](README.zh-CN.md)
+
 dsh-vscode-ok is an independent, open-source coding agent for Visual Studio Code. It drives the open-source DSH (DeepSeek Harness) runtime and puts a streaming chat agent in the sidebar: tool calls, workspace edits, approvals, sessions, models and permission presets. The chat runs through the DSH runtime instead of Copilot's agent.
 
 This project is not affiliated with, endorsed by, or sponsored by DeepSeek. The names "DeepSeek", "DeepSeek Harness" and "DSH" are used only to describe compatibility with that runtime, and all rights to those names and marks belong to their owners. The extension ships no DeepSeek logo or brand asset.
