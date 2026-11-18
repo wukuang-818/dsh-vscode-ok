@@ -1,159 +1,48 @@
 # dsh-vscode-ok
 
-[English](README.md)
+把 DeepSeek Harness 接进 VS Code。0.3.0 起换了实现方式：不再重写一套聊天界面，直接启动本地 `dsh web` 后端，把官方 Web 界面嵌进编辑器。
 
-`dsh-vscode-ok` 是一个独立、开源的 Visual Studio Code 编码代理扩展。它驱动开源的 DSH（DeepSeek Harness）运行时，把流式聊天代理放进侧边栏：工具调用、工作区修改、审批、会话、模型与权限预设都在里面。聊天走 DSH 运行时，不经过 Copilot 的代理。
+## 为什么换
 
-本项目与 DeepSeek 没有隶属、背书或赞助关系。"DeepSeek"、"DeepSeek Harness"、"DSH" 仅用于说明与哪个运行时兼容，相关名称与商标归其所有者。扩展内不含 DeepSeek 的 logo 或品牌素材。
+0.2.0 走的是逆向出来的 HTTP 与 WebSocket 协议，只能覆盖聊天主干的一小部分。官方前端由上百个模块组成，计划模式、目标、后台任务、工作流、子代理、技能、MCP、插件市场、会话压缩、终端侧栏、轨迹与统计都在里面，逐个补齐不现实。
 
-扩展不重新实现代理，而是启动本地 `dsh web` 运行时，通过观察得到的 HTTP 与 WebSocket 协议与它通信：token 交换、`/api/*` 上的 JSON-RPC、以及 `/api/remote.mux` 多路复用流。界面里的一切都来自真实运行时，使用你自己的 `~/.dsh` 配置、模型与凭据。
+0.3.0 把整块前端搬进来，能力与桌面客户端完全一致：你在桌面版里能看到的功能，这里都有。
 
-![dsh-vscode-ok 聊天侧边栏，含流式回答、计划面板、用量栏与行内审批卡片](media/screenshot-chat.png)
+## 用法
 
-| 斜杠命令与操作 | 会话搜索、重命名与分叉 | 宽屏布局 |
-| --- | --- | --- |
-| ![输入框里的斜杠命令菜单](media/screenshot-commands.png) | ![带运行时搜索结果的会话选择器](media/screenshot-sessions.png) | ![宽屏布局](media/screenshot-wide.png) |
+| 命令 | 快捷键 | 说明 |
+|---|---|---|
+| `dsh-vscode-ok: 打开界面` | `Ctrl+Alt+D` | 后端没起就先起，起了直接打开 |
+| `dsh-vscode-ok: Restart Backend` | — | 杀掉进程重新拉，token 会刷新 |
+| `dsh-vscode-ok: Stop Backend` | — | 手动回收进程 |
+| `dsh-vscode-ok: Open in External Browser` | — | 用系统浏览器打开，含 token 的地址 |
+| `dsh-vscode-ok: Copy Access URL` | — | 复制地址到剪贴板 |
+| `dsh-vscode-ok: Show Logs` | — | 打开输出通道，看启动全过程 |
 
-## 功能
+侧边栏的 `dsh-vscode-ok` 图标保留，里面是一张运行时状态表：运行状态、监听地址、打开界面、外部浏览器、复制地址、查看日志。点图标时不自动弹界面，只在你点「打开界面」或按 `Ctrl+Alt+D` 时打开。
 
-- 侧边栏聊天面板，放在次级侧边栏；旧版 VS Code 自动回退到活动栏。界面用 Preact 编写，配色全部取自 VS Code 主题变量。
-- 流式输出助手文本、可折叠的推理过程、工具调用、计划更新与提示信息，映射自运行时的会话事件流。
-- Copilot 风格对话流：会话标题栏与更多操作、右对齐的用户气泡、助手角色行、带语言标签与复制按钮的代码块、表格、行内差异，以及可展开输入、输出、差异与子会话的紧凑工具行。
-- 审批：需要授权的工具调用在对话末尾显示审批卡片（允许一次、始终允许该工具、跳过），回答通过 `/api/$events/result` 回传。
-- 计划与用量：运行时的 `todo` 更新渲染为带进度的计划面板，token 与上下文用量显示在输入框下方。
-- 会话：新建、列出、切换，支持本地过滤加运行时 `session/search` 搜索、重命名与分叉。
-- 模型、agent 预设与推理强度从运行时目录读取（`session/modelCatalog`、`agentPresets/list`）。
-- 权限预设（`read-only`、`workspace-write`、`danger-full-access`）可选。
-- 工作区修改：工具结果里的文件差异直接在差异编辑器中打开，只有 patch 文本时回退为差异文档。
-- 编辑器上下文：可以把选区、当前文件、工作区诊断或终端输出作为附件发给代理；也可以把图片粘贴或拖进输入框。
-- 斜杠命令：本地操作（`/new`、`/stop`、`/model`、`/permission`、`/agent`、`/effort`、`/attach`）加上运行时自己的命令列表，经 `commands/execute` 执行；`@` 自动补全工作区文件并作为上下文附加。
-- 原生 Chat 视图集成：`@dsh` chat participant，支持 `/new`、`/status`、`/model`、`/permission`、`/agent`、`/sessions`、`/compact` 斜杠命令，标准聊天界面里也能用。
-- 状态栏显示后端、会话、模型与权限；输出通道 `dsh-vscode-ok` 记录传输日志。
-- 运行时自动发现：`PATH` 上的 `dsh`、桌面安装（读 Windows 卸载注册表）、npm 全局 shim，或 `npx`，也可以手动指定路径。
+## 配置
 
-## 聊天交互
+| 键 | 默认值 | 说明 |
+|---|---|---|
+| `dsh.port` | `3081` | 后端端口。桌面版默认占 3080，这里错开 |
+| `dsh.autoPort` | `true` | 端口被占时自动往后找空闲的 |
+| `dsh.executable` | 空 | `dsh.cmd` 路径。空则自动找桌面版安装目录与 PATH |
+| `dsh.executableArgs` | `[]` | 在 `web` 之前追加的参数 |
+| `dsh.dshHome` | 空 | 覆盖 `DSH_HOME`，默认用 `~/.dsh` |
+| `dsh.startTimeoutMs` | `120000` | 等待后端就绪的超时 |
+| `dsh.useEditorTab` | `true` | 用内置 Simple Browser；关掉则退回自建 webview 面板 |
 
-输入框的行为对齐主流编码代理，但每个决定仍由运行时做出：
+## 三个已知限制
 
-- 在输入框开头输入 `/` 会打开可用键盘导航的命令菜单。本地操作驱动扩展本身（新建会话、停止、选择模型、权限、agent、推理强度、附加文件）；运行时命令来自 `commands/list`，通过 `commands/execute` 执行，所以插件、skill 与预设带来的命令无需扩展预先知道就会出现。
-- 输入 `@` 会补全工作区文件。宿主维护一份有上限、带缓存的工作区文件列表；被选中的提及会作为编辑器上下文附加到提示词里。
-- 图片可以直接粘贴或拖进输入框，作为 `image` 内容块放进 `session/prompt`，由运行时转交给模型。
-- 计划面板与用量栏读取运行时投影（`todo` 会话事件与 `tokenUsage`、`contextPressure`），扩展不自己维护任务调度器。
-- 会话选择器先做本地标题过滤，再向运行时请求更深层匹配，并通过 `session/rename`、`session/fork` 重命名或分叉会话。
+**主题不跟随。** 官方界面自带暗色主题，不使用 VS Code 的 `--vscode-*` 变量。这是嵌入官方前端换来的代价。
 
-长对话是增量渲染的：webview 只保留滑动窗口里的消息并提供"显示更早的消息"，markdown 解析带缓存，宿主把高频流式消息合并成每帧一次投递，所以 500 条消息的会话仍然流畅，事件不丢失也不乱序。
+**与桌面版共享 `~/.dsh`。** 会话、凭据、插件都是同一份。两边同时往一个会话发消息会有写冲突，建议同一时间只用一边。
 
-## 环境要求
+**token 每次启动都变。** 重启后旧地址失效，用命令重新打开即可，不需要手动复制。
 
-- VS Code 1.96 或更新；次级侧边栏需要 1.106 或更新。
-- 本机安装过 DSH 运行时，桌面应用或 `PATH` 上的 `dsh` 均可（`npm i -g @deepseek-ai/dsh`）。
-- DSH 配置目录（`~/.dsh`）里已配置模型凭据，因为模型调用由运行时发起。
+## 从 0.2.0 迁移
 
-## 快速开始
+`@dsh` chat participant 与它带的七个斜杠命令去掉了，那些能力在官方界面里都有。旧配置项 `dsh.model`、`dsh.permissionPreset`、`dsh.agentPreset`、`dsh.effort`、`dsh.confirmBeforeSend`、`dsh.includeEditorContext`、`dsh.includeDiagnostics`、`dsh.debug`、`dsh.reuseExisting`、`dsh.profile`、`dsh.host` 不再使用，留在 `settings.json` 里会被标为未知配置，可以删掉。
 
-1. 从 VSIX 安装扩展。
-2. 打开一个文件夹。除非 `dsh.autoStart` 设为 `false`，扩展在首次激活时自动启动运行时。
-3. 点开次级侧边栏里的 dsh-vscode-ok 视图，或按 `Ctrl+Alt+D`，输入提示词。
-4. 首次启动需要几秒钟，运行时启动并连接完成后即可对话。
-
-扩展只驱动自己启动的运行时：启动 token 只打印在子进程 stdout 上，别处拿不到，所以桌面应用或别的扩展启动的服务无法被接管。配置端口已被占用且 `dsh.reuseExisting` 为 `true` 时，扩展改用一个空闲端口启动，而不是直接报错。启动 token 通过 `/connect?token=...` 换成 peer cookie，cookie 只保存在本次会话内存中。
-
-## 设置
-
-| 设置项 | 默认值 | 说明 |
-| --- | --- | --- |
-| `dsh.executable` | `""` | `dsh` 命令的完整路径；留空表示自动发现。 |
-| `dsh.executableArgs` | `[]` | 放在传输参数之前的额外参数。 |
-| `dsh.host` | `127.0.0.1` | 运行时监听地址。 |
-| `dsh.port` | `3080` | 运行时监听端口。 |
-| `dsh.reuseExisting` | `true` | 端口被占用时改用空闲端口。 |
-| `dsh.autoStart` | `true` | 激活时自动启动运行时。 |
-| `dsh.profile` | `""` | 传给 `--profile` 的 DSH profile；留空使用 `web`。 |
-| `dsh.dshHome` | `""` | 覆盖 `DSH_HOME`；留空使用 `~/.dsh`。 |
-| `dsh.model` | `""` | 首选模型，格式 `provider:model`。 |
-| `dsh.permissionPreset` | `workspace-write` | 默认权限预设。 |
-| `dsh.agentPreset` | `""` | 首选 agent 预设 id。 |
-| `dsh.effort` | `""` | 当前模型的推理强度。 |
-| `dsh.startTimeoutMs` | `120000` | 等待运行时就绪的时限。 |
-| `dsh.commandTimeoutMs` | `600000` | 单轮对话的时限。 |
-| `dsh.confirmBeforeSend` | `true` | 先把编辑器上下文放进输入框，再发送。 |
-| `dsh.includeEditorContext` | `true` | 从命令发送时附带当前文件。 |
-| `dsh.includeDiagnostics` | `true` | 允许发送工作区诊断。 |
-| `dsh.debug` | `false` | 输出详细传输日志。 |
-
-## 命令
-
-`dsh-vscode-ok: New Chat`、`dsh-vscode-ok: Focus Chat`、`dsh-vscode-ok: Start Backend`、`dsh-vscode-ok: Restart Backend`、`dsh-vscode-ok: Stop Backend`、`dsh-vscode-ok: Show Logs`、`dsh-vscode-ok: Pick Model`、`dsh-vscode-ok: Pick Permission Preset`、`dsh-vscode-ok: Pick Agent Preset`、`dsh-vscode-ok: Send Selection`、`dsh-vscode-ok: Send File`、`dsh-vscode-ok: Add File to Chat`、`dsh-vscode-ok: Attach Problems`、`dsh-vscode-ok: Copy Session ID`、`dsh-vscode-ok: Open Settings`。
-
-编辑器与资源管理器的右键菜单里有发送选区、发送文件、加入聊天。
-
-## 架构
-
-```
-VS Code 扩展宿主                          DSH 运行时（由扩展启动）
-┌──────────────────────────────┐        ┌───────────────────────────────┐
-│ chat webview（Preact）        │        │ dsh web 服务                   │
-│   ↕ postMessage              │        │   /api/<ns>/<method>  (HTTP)  │
-│ ChatController               │ JSON-  │   /api/remote.mux     (WS)    │
-│   ↕ AgentEvent               │ RPC    │   session/follow              │
-│ WebBackend（传输层）          │ ─────► │   $events（审批、列表等）      │
-│ ChatViewProvider / 命令       │ ◄───── │   会话事件                     │
-└──────────────────────────────┘        └───────────────────────────────┘
-```
-
-- `src/dsh/webClient.ts` 负责进程生命周期、token 与 cookie 认证、RPC 信封与多路复用流。
-- `src/dsh/webBackend.ts` 把线上事件转换成与传输无关的 `AgentEvent` 联合类型。
-- `src/chat/controller.ts` 维护聊天状态，是 webview 与 chat participant 的唯一写入方。
-- `src/webview/` 是 Preact 界面；宿主与 webview 之间只交换 `src/shared/protocol.ts` 定义的消息。
-
-### 为什么用 web 协议，而不用 SDK 或 ACP
-
-DSH 运行时对外提供三个机器接口：
-
-- `dsh --profile sdk`（stdio 上的 JSON-RPC，客户端包 `@deepseek-ai/dsh-sdk-client`）是最干净的 API，但公开协议没有逐 token 流式输出，每步只给一条完整消息；没有取消请求，中止意味着杀掉运行时；已发布的包里也没有服务端到客户端的审批通道。本类聊天界面这三项都需要。
-- `dsh --profile acp`（Agent Client Protocol）面向自动化：只发已提交的消息，没有逐 token 流式，看不到工具与推理过程，也没有会话列表与恢复。
-- `dsh web` 暴露的是官方 web 界面自己在用的协议：流式 assistant 尝试、工具调用与结果、带回答路由的审批、会话的新建与列表与分叉、模型目录、agent 预设、设置与凭据。
-
-代价是与版本强耦合：0.1 行用点号端点与 `/api/events.mux`，0.2 行改成斜杠端点与 `/api/remote.mux`，每个端点还要参数名完全一致。本项目针对 0.2 协议，发现服务端不匹配时会给出明确提示。
-
-### 与现有扩展的关系
-
-- Codex 扩展在侧边栏位置与聊天布局上值得参考，但它注册的是 propos 的 `chatSessions` provider，市场构建无法发布；本扩展改用稳定的 chat participant API 加 webview 视图。
-- 其他 MIT 许可的 DSH 扩展在启动、认证与流式行为上被研究过，没有复制它们的源码或资源；这里的协议事实是通过观察运行时的真实流量重新得出的。
-- `deepseek-ai/dsh-superagent-prototype` 是 DSH 插件包，不是 VS Code 扩展，也不是本协议的客户端，因此不作为本项目的代码基。
-
-## 开发
-
-```bash
-npm install
-npm run build        # 用 esbuild 打包宿主与 webview
-npm run typecheck    # 检查宿主与 webview 的 TypeScript
-npm test             # 运行 vitest 单元测试
-npm run test:e2e     # 激活冒烟：桩 vscode 宿主 + 真实 dsh web 运行时
-```
-
-`test:e2e` 会加载构建后的扩展、注册视图，通过新启动的 `dsh web` 运行时发送一条真实提示词并断言流式回答。它需要可用的 DSH 安装与凭据，测试结束时会停掉运行时。
-
-本地调试可以用 `Run dsh-vscode-ok Extension` 启动配置，或者：
-
-```bash
-code --extensionDevelopmentPath="D:\WK_file\dsh-vscode-ok" --disable-extensions --profile-temp --log=trace
-```
-
-用 `npm run package` 打包 VSIX。
-
-协议调研笔记在 `docs/recon/`（`vscode-api.md`、`dsh-web-api.md`、`ref-impl.md`、`dsh-sdk.md`），属于研究记录，不随扩展打包。
-
-## 排查常见问题
-
-- 视图里提示找不到 runtime：确认桌面应用已安装，或在设置里把 `dsh.executable` 指向 `dsh.cmd` 的完整路径。
-- 端口冲突：`dsh.reuseExisting` 为 `true` 时会自动换端口；日志里会写 `starting the runtime on <port>`。
-- 想看到协议细节：打开输出通道 `dsh-vscode-ok`，并把 `dsh.debug` 设为 `true`。
-- 没有模型可选：运行时没读到凭据，检查 `~/.dsh` 里的模型配置。
-
-## 命名、许可与声明
-
-- 项目名、包名与显示名都是 `dsh-vscode-ok`。它是独立项目，不是 DeepSeek 的产品，也不叫 "DSH"；该名称只用于描述所连接的运行时。
-- 许可证为 MIT，见 `LICENSE`。
-- 不含任何专有扩展的代码、图标、截图、字符串或其他素材。协议常量与端点名是为互操作所需的事实性接口标识。
-- `media/` 下的图标与截图均为本项目自绘。
+`dsh.port` 的默认值从 3080 改成了 3081。如果你之前显式写过 3080，建议改成 3081 或删掉这一项。

@@ -1,14 +1,13 @@
 {
   "name": "dsh-vscode-ok",
   "displayName": "dsh-vscode-ok",
-  "description": "Agent chat for VS Code driving the open-source DSH runtime: streaming replies, tool calls, plan updates, workspace edits, approvals, sessions, models and permissions.",
-  "version": "0.2.0",
+  "description": "在 VS Code 里打开 DeepSeek Harness 官方界面：启动本地 dsh web 后端，解析启动 token，交给内置浏览器显示。与桌面客户端同一套前端，能力保持一致。",
+  "version": "0.4.1",
   "publisher": "wukuang-818",
   "license": "MIT",
   "icon": "media/icon.png",
   "engines": {
-    "vscode": "^1.106.0",
-    "node": ">=20"
+    "vscode": "^1.96.0"
   },
   "categories": [
     "AI",
@@ -17,24 +16,36 @@
   ],
   "keywords": [
     "dsh",
+    "deepseek",
+    "harness",
     "agent",
     "chat",
-    "ai",
-    "copilot"
+    "ai"
   ],
   "activationEvents": [
+    "onStartupFinished",
+    "onView:dsh.statusView",
     "onView:dsh.chatView",
-    "onWebviewPanel:dsh.chat",
-    "onChatParticipant:dsh"
+    "onCommand:dsh.openInSidebar",
+    "onCommand:dsh.openInEditor",
+    "onCommand:dsh.openChat",
+    "onCommand:dsh.focusChat",
+    "onCommand:dsh.newChat",
+    "onCommand:dsh.startBackend",
+    "onCommand:dsh.restartBackend",
+    "onCommand:dsh.stopBackend",
+    "onCommand:dsh.showLogs",
+    "onCommand:dsh.openInBrowser",
+    "onCommand:dsh.copyUrl"
   ],
-  "main": "./dist/extension.js",
+  "main": "./extension.js",
   "extensionKind": [
     "workspace"
   ],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": false,
-      "description": "This extension reads files, runs commands and edits the workspace through a local DSH runtime, so it needs a trusted workspace."
+      "description": "The extension launches a local agent runtime that reads files, runs commands and edits the workspace, so it needs a trusted workspace."
     },
     "virtualWorkspaces": false
   },
@@ -46,104 +57,55 @@
     "type": "git",
     "url": "https://github.com/wukuang-818/dsh-vscode-ok"
   },
-  "bugs": {
-    "url": "https://github.com/wukuang-818/dsh-vscode-ok/issues"
-  },
-  "scripts": {
-    "build": "node esbuild.mjs",
-    "watch": "node esbuild.mjs --watch",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.webview.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:e2e": "node esbuild.mjs && node test/e2e/activation-smoke.cjs",
-    "package": "npm run build && npx @vscode/vsce package --no-dependencies --allow-missing-repository",
-    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\""
-  },
   "contributes": {
-    "chatParticipants": [
-      {
-        "id": "dsh",
-        "name": "dsh",
-        "fullName": "dsh-vscode-ok",
-        "description": "Let the dsh-vscode-ok agent work on your workspace from the built-in chat. Reads files, runs commands and edits the workspace.",
-        "isSticky": true,
-        "commands": [
-          {
-            "name": "new",
-            "description": "Start a new session for this workspace."
-          },
-          {
-            "name": "sessions",
-            "description": "Switch to an existing session."
-          },
-          {
-            "name": "model",
-            "description": "Pick the model for the active session."
-          },
-          {
-            "name": "permission",
-            "description": "Pick the permission preset (read-only, workspace-write, danger-full-access)."
-          },
-          {
-            "name": "agent",
-            "description": "Pick the agent preset for the active session."
-          },
-          {
-            "name": "compact",
-            "description": "Compact the conversation history of the active session."
-          },
-          {
-            "name": "status",
-            "description": "Show backend status, session and configuration."
-          }
-        ]
-      }
-    ],
     "viewsContainers": {
       "secondarySidebar": [
         {
           "id": "dshSidebar",
           "title": "dsh-vscode-ok",
-          "icon": "media/dsh.svg",
-          "when": "dsh.supportsSecondarySidebar"
-        }
-      ],
-      "activitybar": [
-        {
-          "id": "dshSidebar",
-          "title": "dsh-vscode-ok",
-          "icon": "media/dsh.svg",
-          "when": "!dsh.supportsSecondarySidebar"
+          "icon": "media/dsh.svg"
         }
       ]
     },
     "views": {
       "dshSidebar": [
         {
-          "type": "webview",
           "id": "dsh.chatView",
-          "name": "Chat"
+          "name": "Chat",
+          "type": "webview"
         }
       ]
     },
-    "viewsWelcome": [
-      {
-        "view": "dsh.chatView",
-        "contents": "The chat needs to start the local agent runtime.\n[Start dsh-vscode-ok](command:dsh.startBackend)"
-      }
-    ],
     "commands": [
       {
-        "command": "dsh.newChat",
-        "title": "New Chat",
+        "command": "dsh.openChat",
+        "title": "打开界面",
         "category": "dsh-vscode-ok",
-        "icon": "$(add)"
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "dsh.openInSidebar",
+        "title": "在侧边栏打开",
+        "category": "dsh-vscode-ok",
+        "icon": "$(layout-sidebar-right)"
+      },
+      {
+        "command": "dsh.openInEditor",
+        "title": "在编辑器标签页打开",
+        "category": "dsh-vscode-ok",
+        "icon": "$(split-horizontal)"
       },
       {
         "command": "dsh.focusChat",
         "title": "Focus Chat",
         "category": "dsh-vscode-ok",
         "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "dsh.newChat",
+        "title": "New Chat",
+        "category": "dsh-vscode-ok",
+        "icon": "$(add)"
       },
       {
         "command": "dsh.startBackend",
@@ -170,93 +132,34 @@
         "icon": "$(output)"
       },
       {
-        "command": "dsh.openSettings",
-        "title": "Open Settings",
+        "command": "dsh.openInBrowser",
+        "title": "Open in External Browser",
         "category": "dsh-vscode-ok",
-        "icon": "$(gear)"
+        "icon": "$(link-external)"
       },
       {
-        "command": "dsh.pickModel",
-        "title": "Select Model",
-        "category": "dsh-vscode-ok"
-      },
-      {
-        "command": "dsh.pickPermission",
-        "title": "Select Permission Preset",
-        "category": "dsh-vscode-ok"
-      },
-      {
-        "command": "dsh.pickAgent",
-        "title": "Select Agent Preset",
-        "category": "dsh-vscode-ok"
-      },
-      {
-        "command": "dsh.sendSelection",
-        "title": "Send Selection to dsh-vscode-ok",
-        "category": "dsh-vscode-ok"
-      },
-      {
-        "command": "dsh.sendFile",
-        "title": "Send File to dsh-vscode-ok",
-        "category": "dsh-vscode-ok"
-      },
-      {
-        "command": "dsh.addFileToChat",
-        "title": "Add File to dsh-vscode-ok Chat",
-        "category": "dsh-vscode-ok"
-      },
-      {
-        "command": "dsh.copySessionId",
-        "title": "Copy Session ID",
-        "category": "dsh-vscode-ok"
+        "command": "dsh.copyUrl",
+        "title": "Copy Access URL",
+        "category": "dsh-vscode-ok",
+        "icon": "$(copy)"
       }
     ],
     "menus": {
-      "editor/context": [
-        {
-          "command": "dsh.sendSelection",
-          "when": "editorHasSelection",
-          "group": "dsh@1"
-        }
-      ],
-      "explorer/context": [
-        {
-          "command": "dsh.sendFile",
-          "when": "resourceScheme == file",
-          "group": "dsh@1"
-        },
-        {
-          "command": "dsh.addFileToChat",
-          "when": "resourceScheme == file",
-          "group": "dsh@2"
-        }
-      ],
-      "commandPalette": [
-        {
-          "command": "dsh.sendSelection",
-          "when": "editorHasSelection"
-        }
-      ],
       "view/title": [
         {
-          "command": "dsh.newChat",
+          "command": "dsh.restartBackend",
           "when": "view == dsh.chatView",
           "group": "navigation@1"
         },
         {
-          "command": "dsh.pickModel",
+          "command": "dsh.showLogs",
           "when": "view == dsh.chatView",
           "group": "navigation@2"
         },
         {
-          "command": "dsh.restartBackend",
+          "command": "dsh.openInBrowser",
           "when": "view == dsh.chatView",
           "group": "navigation@3"
-        },
-        {
-          "command": "dsh.openSettings",
-          "when": "view == dsh.chatView",
-          "group": "navigation@4"
         }
       ]
     },
@@ -273,7 +176,7 @@
         "dsh.executable": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path or command used to launch the DSH CLI. Leave empty to auto-detect: the desktop app's bundled `dsh.cmd`, an installed `dsh` on `PATH`, or `npx --yes @deepseek-ai/dsh`."
+          "markdownDescription": "`dsh.cmd` 的完整路径。留空自动查找桌面版安装目录（`DeepSeek Harness\\resources\\runtime\\cli\\bin\\dsh.cmd`）与 PATH。"
         },
         "dsh.executableArgs": {
           "type": "array",
@@ -281,112 +184,56 @@
             "type": "string"
           },
           "default": [],
-          "description": "Extra arguments passed before the `web` command. Leave empty to use the built-in defaults."
+          "description": "在 web 子命令之前追加的参数。留空使用内置默认值。"
         },
         "dsh.port": {
           "type": "number",
-          "default": 3080,
+          "default": 3081,
           "minimum": 0,
           "maximum": 65535,
-          "description": "Loopback port for the DSH web backend. A running instance on this port is reused when possible; 0 lets the OS choose a free port."
+          "description": "后端监听端口。桌面版默认占用 3080，这里默认 3081 避免冲突。"
         },
-        "dsh.host": {
-          "type": "string",
-          "default": "127.0.0.1",
-          "description": "Loopback host for the DSH web backend."
-        },
-        "dsh.reuseExisting": {
+        "dsh.autoPort": {
           "type": "boolean",
           "default": true,
-          "description": "When the configured port is already serving something else, start the runtime on a free port instead of failing."
-        },
-        "dsh.autoStart": {
-          "type": "boolean",
-          "default": true,
-          "description": "Start (or reuse) the backend automatically when the DSH chat view is opened."
+          "description": "配置的端口被占用时，自动向后寻找空闲端口，而不是报错。"
         },
         "dsh.dshHome": {
           "type": "string",
           "default": "",
-          "description": "Override DSH_HOME for the spawned backend. Leave empty to inherit the current environment or use the desktop app's default."
-        },
-        "dsh.profile": {
-          "type": "string",
-          "default": "",
-          "description": "Named DSH profile to boot instead of the default web surface. Leave empty for the built-in web profile."
-        },
-        "dsh.model": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Default model for new sessions, as `<provider>:<model>` (for example `deepseek-official:deepseek-v4-flash`). Leave empty to use the DSH default."
-        },
-        "dsh.permissionPreset": {
-          "type": "string",
-          "enum": [
-            "read-only",
-            "workspace-write",
-            "danger-full-access"
-          ],
-          "default": "workspace-write",
-          "description": "Default permission preset for new sessions."
-        },
-        "dsh.agentPreset": {
-          "type": "string",
-          "default": "",
-          "description": "Default agent preset for new sessions. Leave empty to use the DSH default."
-        },
-        "dsh.effort": {
-          "type": "string",
-          "default": "",
-          "description": "Default reasoning effort for new sessions. Leave empty to use the model default."
+          "description": "覆盖 DSH_HOME。留空使用默认的 ~/.dsh，与桌面版共用会话与凭据。"
         },
         "dsh.startTimeoutMs": {
           "type": "number",
           "default": 120000,
-          "description": "How long to wait for the backend readiness line before failing."
+          "description": "等待后端打印访问地址的超时时间，单位毫秒。"
         },
-        "dsh.commandTimeoutMs": {
-          "type": "number",
-          "default": 600000,
-          "description": "Timeout for a single agent turn. The runtime keeps working after the UI stops waiting."
+        "dsh.placement": {
+          "type": "string",
+          "enum": [
+            "sidebar",
+            "editor"
+          ],
+          "default": "sidebar",
+          "description": "“打开界面”默认落在哪里：sidebar 进侧边栏，可与 Copilot 并列；editor 用编辑器标签页，视野更宽。"
         },
-        "dsh.confirmBeforeSend": {
+        "dsh.useEditorTab": {
           "type": "boolean",
           "default": true,
-          "description": "Ask for a prompt confirmation before sending editor context via the context menu commands."
+          "description": "为 true 时用内置 Simple Browser 在编辑器标签页打开；为 false 时退回自建 webview 面板。"
         },
-        "dsh.includeEditorContext": {
+        "dsh.autoStart": {
           "type": "boolean",
           "default": true,
-          "description": "Attach the active file and selection as context to chat participant requests."
-        },
-        "dsh.includeDiagnostics": {
-          "type": "boolean",
-          "default": true,
-          "description": "Attach current workspace diagnostics (errors and warnings) as context when using the chat participant."
-        },
-        "dsh.debug": {
-          "type": "boolean",
-          "default": false,
-          "description": "Log backend protocol traffic to the DSH output channel."
+          "description": "打开 Runtime 视图时自动启动或复用后端。"
         }
       }
     }
   },
-  "dependencies": {
-    "dompurify": "^3.2.7",
-    "marked": "^15.0.12",
-    "preact": "^10.27.2",
-    "ws": "^8.18.3"
+  "bugs": {
+    "url": "https://github.com/wukuang-818/dsh-vscode-ok/issues"
   },
-  "devDependencies": {
-    "@types/node": "^22.18.8",
-    "@types/vscode": "^1.106.0",
-    "@types/ws": "^8.18.1",
-    "@vscode/vsce": "^4.1.1",
-    "esbuild": "^0.28.2",
-    "jsdom": "^26.1.0",
-    "typescript": "^5.6.3",
-    "vitest": "^3.2.6"
+  "scripts": {
+    "package": "npx @vscode/vsce package --no-dependencies"
   }
 }

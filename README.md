@@ -1,155 +1,49 @@
 # dsh-vscode-ok
 
-[中文说明](README.zh-CN.md)
+Bring DeepSeek Harness into VS Code. Since 0.3.0 the extension no longer ships a hand-written chat front end. It starts the local `dsh web` backend and loads the official DSH web interface inside the editor.
 
-dsh-vscode-ok is an independent, open-source coding agent for Visual Studio Code. It drives the open-source DSH (DeepSeek Harness) runtime and puts a streaming chat agent in the sidebar: tool calls, workspace edits, approvals, sessions, models and permission presets. The chat runs through the DSH runtime instead of Copilot's agent.
+## Why the implementation changed
 
-This project is not affiliated with, endorsed by, or sponsored by DeepSeek. The names "DeepSeek", "DeepSeek Harness" and "DSH" are used only to describe compatibility with that runtime, and all rights to those names and marks belong to their owners. The extension ships no DeepSeek logo or brand asset.
+0.2.0 talked to the runtime through an undocumented HTTP and WebSocket protocol and could only reproduce a small part of the chat surface. The official front end is made of hundreds of modules: plan mode, tasks, background jobs, workflows, subagents, skills, MCP, the plugin marketplace, session compaction, the terminal sidebar, traces and usage all live there, and rebuilding them one by one was not practical.
 
-The extension does not reimplement the agent. It launches a local `dsh web` runtime and talks to it over the documented-by-observation HTTP + WebSocket protocol: token exchange, JSON-RPC over `/api/*`, and the remote mux stream at `/api/remote.mux`. Everything in the UI is produced by the real runtime with your own `~/.dsh` profile, models and credentials.
+From 0.3.0 the extension loads the whole front end instead, so the capabilities match the desktop client. Anything you can do in the desktop app is available here.
 
-![dsh-vscode-ok chat sidebar with a streaming answer, plan panel, usage footer and an inline approval card](media/screenshot-chat.png)
+## Usage
 
-| Slash commands and actions | Session search, rename and fork | Wide layout |
-| --- | --- | --- |
-| ![Slash command menu in the composer](media/screenshot-commands.png) | ![Session picker with runtime search results](media/screenshot-sessions.png) | ![Wide layout](media/screenshot-wide.png) |
+| Command | Keybinding | Description |
+|---|---|---|
+| `dsh-vscode-ok: Open UI` | `Ctrl+Alt+D` | Starts the backend if needed, then opens the interface. |
+| `dsh-vscode-ok: Restart Backend` | - | Kills and relaunches the process; the token is renewed. |
+| `dsh-vscode-ok: Stop Backend` | - | Stops the process manually. |
+| `dsh-vscode-ok: Open in External Browser` | - | Opens the token-bearing address in the system browser. |
+| `dsh-vscode-ok: Copy Access URL` | - | Copies the address to the clipboard. |
+| `dsh-vscode-ok: Show Logs` | - | Opens the output channel with the full startup log. |
 
+The `dsh-vscode-ok` icon in the secondary sidebar opens a small status tree: runtime state, listening port, open UI, external browser, copy address and logs. Clicking the icon does not open the interface by itself; only the open command or `Ctrl+Alt+D` does.
 
-## Features
+## Configuration
 
-- Chat sidebar in the secondary sidebar (activity bar fallback on older VS Code), Preact UI rendered with VS Code theme variables.
-- Streaming assistant text, collapsible reasoning, tool calls, plan updates and notices, mapped from the runtime session event stream.
-- Copilot-style transcript: session title bar with overflow actions, right-aligned user bubbles, assistant role line, code fences with language and copy, tables, inline diffs and compact tool rows that expand to input, output, diff and child sessions.
-- Approvals: tool calls that need permission surface as an inline approval card with allow once, always allow this tool and skip, answered back over `/api/$events/result`.
-- Plan and usage: the runtime's `todo` updates render as a plan panel with progress, and token/context usage appears under the composer.
-- Sessions: create, list, switch, search (client-side filter plus runtime `session/search`), rename and fork.
-- Models, agent presets and reasoning effort picked from the runtime catalog (`session/modelCatalog`, `agentPresets/list`).
-- Permissions preset selection (`read-only`, `workspace-write`, `danger-full-access`).
-- Workspace edits: file diffs from tool results open in the diff editor, with a patch fallback when only the patch text is available.
-- Editor context: send the selection, the active file, workspace diagnostics or terminal output to the agent as attachments; paste or drop images into the composer.
-- Slash commands: local actions (`/new`, `/stop`, `/model`, `/permission`, `/agent`, `/effort`, `/attach`) plus the runtime's own command list executed through `commands/execute`; `@` mentions autocomplete workspace files and attach them.
-- Native Chat view integration: `@dsh` chat participant with `/new`, `/status`, `/model`, `/permission`, `/agent`, `/sessions`, `/compact` slash commands, so the agent is also reachable from the standard chat UI.
-- Status bar entry with backend state, session, model and permission; output channel `dsh-vscode-ok` for transport logs.
-- Runtime discovery: `dsh` on `PATH`, a DSH desktop install (via the Windows uninstall registry), an npm global shim, or `npx`, plus explicit overrides.
+| Key | Default | Description |
+|---|---|---|
+| `dsh.port` | `3081` | Backend port. The desktop app uses 3080 by default, so the extension stays clear of it. |
+| `dsh.autoPort` | `true` | When the configured port is busy, scan upward for a free one. |
+| `dsh.executable` | empty | Full path to `dsh.cmd`. Empty means auto-detect from the desktop install directory and `PATH`. |
+| `dsh.executableArgs` | `[]` | Extra arguments passed before the `web` subcommand. |
+| `dsh.dshHome` | empty | Overrides `DSH_HOME`; defaults to `~/.dsh`. |
+| `dsh.startTimeoutMs` | `120000` | How long to wait for the backend readiness line. |
+| `dsh.useEditorTab` | `true` | Use the built-in Simple Browser; turn it off to fall back to a self-built webview panel. |
+| `dsh.placement` | `sidebar` | Default landing spot for the open command: `sidebar` or `editor`. |
 
-## Chat interactions
+## Known limitations
 
-The composer behaves like the mainstream coding agents, but every decision belongs to the runtime:
+Theme does not follow VS Code. The official interface ships its own dark theme and does not consume the `--vscode-*` variables; that is the cost of embedding the official front end.
 
-- Type `/` at the start of the draft for a keyboard-navigable command menu. Local actions drive the extension (new session, stop, pick model, permission, agent, effort, attach files); runtime commands come from `commands/list` and are executed with `commands/execute`, so plugin, skill and preset commands appear without the extension knowing them.
-- Type `@` for workspace file autocomplete. The host keeps a capped, cached workspace file list; the typed mention is attached to the prompt as editor context.
-- Paste or drag images into the composer. They are sent as `image` content blocks in `session/prompt`, which the runtime forwards to the model.
-- The plan panel and the usage footer are read from runtime projections (`todo` session events and `tokenUsage`/`contextPressure`); the extension does not maintain its own task scheduler.
-- The session picker searches titles locally and asks the runtime for deeper matches, and can rename or fork a session through `session/rename` and `session/fork`.
+`~/.dsh` is shared with the desktop app. Sessions, credentials and plugins are the same files. Sending to one session from both sides at the same time can conflict, so use one side at a time.
 
-Long transcripts render incrementally: the webview keeps a sliding window of messages with a "show earlier" control, memoizes markdown parsing, and the host coalesces high-frequency stream messages into one post per frame, so a 500-message session stays responsive without dropping or reordering events.
+The token changes on every start. After a restart the old address stops working; open the interface again from the command instead of reusing the URL.
 
-## Requirements
+## Migrating from 0.2.0
 
-- VS Code 1.96 or newer (1.106 or newer for the secondary sidebar placement).
-- A DSH runtime installed, either the desktop app or `dsh` on `PATH` (`npm i -g @deepseek-ai/dsh`).
-- Model credentials configured in the DSH profile (`~/.dsh`), since the runtime performs the model calls.
+The `@dsh` chat participant and its seven slash commands are gone; those capabilities live in the official interface. The old settings `dsh.model`, `dsh.permissionPreset`, `dsh.agentPreset`, `dsh.effort`, `dsh.confirmBeforeSend`, `dsh.includeEditorContext`, `dsh.includeDiagnostics`, `dsh.debug`, `dsh.reuseExisting`, `dsh.profile` and `dsh.host` are no longer read and will be flagged as unknown in `settings.json`.
 
-## Getting started
-
-1. Install the extension from the VSIX or from GitHub Releases.
-2. Open a folder. The extension auto-starts the runtime on first activation unless `dsh.autoStart` is `false`.
-3. Open the dsh-vscode-ok view in the secondary sidebar (or press `Ctrl+Alt+D`) and type a prompt.
-4. The first launch takes a few seconds while the runtime boots and connects.
-
-The extension always drives a runtime it started itself: the launch token is printed on the child process's stdout and never exposed elsewhere, so a server started by the desktop app or by another extension cannot be adopted. When the configured port is already occupied and `dsh.reuseExisting` is `true`, the extension picks a free port and starts there instead of failing. The launch token is exchanged for a peer cookie through `/connect?token=...`, and that cookie is kept in memory for the session.
-
-## Settings
-
-| Setting | Default | Description |
-| --- | --- | --- |
-| `dsh.executable` | `""` | Explicit path to the `dsh` CLI. Empty means auto-detect. |
-| `dsh.executableArgs` | `[]` | Arguments placed before the transport arguments. |
-| `dsh.host` | `127.0.0.1` | Host the runtime listens on. |
-| `dsh.port` | `3080` | Port the runtime listens on. |
-| `dsh.reuseExisting` | `true` | Pick a free port when `dsh.port` is already occupied. |
-| `dsh.autoStart` | `true` | Start the runtime on activation. |
-| `dsh.profile` | `""` | DSH profile passed as `--profile`; empty uses `web`. |
-| `dsh.dshHome` | `""` | `DSH_HOME` override; empty uses `~/.dsh`. |
-| `dsh.model` | `""` | Preferred model (`provider:model`). |
-| `dsh.permissionPreset` | `workspace-write` | Default permission preset. |
-| `dsh.agentPreset` | `""` | Preferred agent preset id. |
-| `dsh.effort` | `""` | Reasoning effort for the selected model. |
-| `dsh.startTimeoutMs` | `120000` | Time allowed for the runtime to become ready. |
-| `dsh.commandTimeoutMs` | `600000` | Time allowed for a single agent turn. |
-| `dsh.confirmBeforeSend` | `true` | Stage editor context in the composer before sending. |
-| `dsh.includeEditorContext` | `true` | Attach the active file when sending from commands. |
-| `dsh.includeDiagnostics` | `true` | Allow sending workspace diagnostics. |
-| `dsh.debug` | `false` | Verbose transport logging. |
-
-## Commands
-
-`dsh-vscode-ok: New Chat`, `dsh-vscode-ok: Focus Chat`, `dsh-vscode-ok: Start Backend`, `dsh-vscode-ok: Restart Backend`, `dsh-vscode-ok: Stop Backend`, `dsh-vscode-ok: Show Logs`, `dsh-vscode-ok: Pick Model`, `dsh-vscode-ok: Pick Permission Preset`, `dsh-vscode-ok: Pick Agent Preset`, `dsh-vscode-ok: Send Selection`, `dsh-vscode-ok: Send File`, `dsh-vscode-ok: Add File to Chat`, `dsh-vscode-ok: Attach Problems`, `dsh-vscode-ok: Copy Session ID`, `dsh-vscode-ok: Open Settings`.
-
-Editor and Explorer context menus expose send/add-to-chat for the selected file.
-
-## Architecture
-
-```
-VS Code extension host                       DSH runtime (spawned by the extension)
-┌──────────────────────────────┐            ┌───────────────────────────────┐
-│ chat webview (Preact)        │            │ dsh web server                │
-│   ↕ postMessage              │            │   /api/<ns>/<method>  (HTTP)  │
-│ ChatController               │  JSON-RPC  │   /api/remote.mux     (WS)    │
-│   ↕ AgentEvent               │ ─────────► │   session/follow              │
-│ WebBackend (transport)       │            │   $events (approvals, lists)  │
-│ ChatViewProvider / commands  │ ◄───────── │   session events              │
-└──────────────────────────────┘            └───────────────────────────────┘
-```
-
-- `src/dsh/webClient.ts` owns process lifecycle, token/cookie auth, the RPC envelope and the multiplexed streams.
-- `src/dsh/webBackend.ts` translates wire events into the transport-independent `AgentEvent` union.
-- `src/chat/controller.ts` maintains chat state and is the single writer for the webview and the chat participant.
-- `src/webview/` is the Preact UI; the host and webview only exchange the messages in `src/shared/protocol.ts`.
-
-### Why the web protocol and not the SDK or ACP
-
-The DSH runtime ships three machine-facing entry points:
-
-- `dsh --profile sdk` (JSON-RPC over stdio via `@deepseek-ai/dsh-sdk-client`) is the cleanest API, but its public protocol has no live token streaming (one message per step), no cancel request (abort means killing the runtime) and no server-to-client approval channel in the published package. A chat UI of this class needs all three.
-- `dsh --profile acp` (Agent Client Protocol) is designed for automation: it emits committed messages only, no token streaming, no tool or reasoning visibility, no session list or resume.
-- `dsh web` exposes the protocol the official web UI itself uses: streaming assistant attempts, tool calls and results, approvals with answer routing, session list/create/fork, model catalogs, agent presets, settings and credentials.
-
-The cost of that choice is version coupling: endpoint names changed between the 0.1 line (dotted names, `/api/events.mux`) and 0.2 (slash names, `/api/remote.mux`), and the transport has to speak each endpoint's exact argument names. The extension targets the 0.2 protocol and reports a clear notice when a server it finds does not match.
-
-### Relation to existing extensions
-
-- The Codex extension is a UX reference for sidebar placement and chat layout, but it registers a proposed `chatSessions` provider that marketplace builds cannot ship, so this extension uses the stable chat participant API plus a webview view.
-- Other MIT-licensed DSH extensions were studied for their spawn, auth and streaming behaviour. No source code or asset from them is copied; the protocol facts here were re-derived by observing the runtime's own traffic.
-- `deepseek-ai/dsh-superagent-prototype` is a DSH plugin bundle, not a VS Code extension and not a client for this protocol, so it is not the code base for this project.
-
-## Development
-
-```bash
-npm install
-npm run build        # esbuild host + webview bundles
-npm run typecheck    # host + webview TypeScript
-npm test             # vitest unit tests
-npm run test:e2e     # activation smoke: stubbed vscode host + real dsh web runtime
-```
-
-`test:e2e` loads the built extension, registers the view, sends a real prompt through
-a freshly spawned `dsh web` runtime and asserts the streamed reply. It needs a working
-DSH installation and credentials; the runtime is stopped again when the test finishes.
-
-Run the extension locally with the `Run dsh-vscode-ok Extension` launch configuration, or:
-
-```bash
-code --extensionDevelopmentPath="D:\WK_file\dsh-vscode-ok" --disable-extensions --profile-temp --log=trace
-```
-
-Package a VSIX with `npm run package`.
-
-Reconnaissance notes that document the observed protocols live in `docs/recon/` (`vscode-api.md`, `dsh-web-api.md`, `ref-impl.md`, `dsh-sdk.md`). They are research notes, not shipped code.
-
-## Naming, licensing and notices
-
-- The project, the package name and the display name are `dsh-vscode-ok`. It is an independent project, not a DeepSeek product, and it is not called "DSH": that name is used only to describe the runtime it connects to.
-- License: MIT, see `LICENSE`.
-- No code, icons, screenshots, strings or other assets from proprietary extensions are included. Protocol constants and endpoint names are factual interface identifiers needed for interoperability.
-- Icons and screenshots under `media/` were created for this project.
+The default of `dsh.port` moved from 3080 to 3081. If you pinned 3080, switch to 3081 or remove the entry.

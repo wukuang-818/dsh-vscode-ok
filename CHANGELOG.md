@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.4.1
+
+- The loopback proxy now refreshes the auth cookie and replays the request when the backend answers 401, so the embedded interface recovers after the session cookie expires.
+- The status tree reports the port the backend actually printed, not the configured one.
+
+## 0.4.0
+
+- Added a loopback reverse proxy. A webview iframe is a third-party context and drops the backend's `Set-Cookie`, so the extension keeps the auth cookie itself and injects it into forwarded requests.
+- Forwarded WebSocket upgrades and returned 502 diagnostics when the backend is unreachable.
+
+## 0.3.3, 0.3.2, 0.3.1
+
+- Iterative fixes while the embedded front end replaced the hand-written chat UI.
+
+## 0.3.0
+
+- Replaced the custom chat UI with the official DSH web front end. The extension starts `dsh web` and loads it in the editor, so plan mode, tasks, background jobs, workflows, subagents, skills, MCP, the plugin marketplace, session compaction, the terminal sidebar, traces and usage all match the desktop client.
+
 ## 0.2.0 (unreleased)
 
 Chat UI rebuilt to match the mainstream coding agents while keeping DSH as the agent core, plus new interaction, capability and performance work.
